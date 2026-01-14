@@ -112,7 +112,6 @@
   let sharedLink = getSharedLink();
   let previewStackedAsset: AssetResponseDto | undefined = $state();
   let isShowEditor = $state(false);
-  let fullscreenElement = $state<Element>();
   let unsubscribes: (() => void)[] = [];
   let stack: StackResponseDto | null = $state(null);
 
@@ -288,20 +287,12 @@
   };
 
   const handlePlaySlideshow = async () => {
-    try {
-      await assetViewerHtmlElement?.requestFullscreen?.();
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_enter_fullscreen'));
-      $slideshowState = SlideshowState.StopSlideshow;
-    }
+    return;
   };
 
   const handleStopSlideshow = async () => {
     try {
-      if (document.fullscreenElement) {
-        document.body.style.cursor = '';
-        await document.exitFullscreen();
-      }
+      document.body.style.cursor = '';
     } catch (error) {
       handleError(error, $t('errors.unable_to_exit_fullscreen'));
     } finally {
@@ -359,8 +350,6 @@
     onAction?.(action);
   };
 
-  let isFullScreen = $derived(fullscreenElement !== null);
-
   $effect(() => {
     if (album && !album.isActivityEnabled && activityManager.commentCount === 0) {
       assetViewerManager.closeActivityPanel();
@@ -410,8 +399,6 @@
 
 <OnEvents {onAssetReplace} {onAssetUpdate} />
 
-<svelte:document bind:fullscreenElement />
-
 <section
   id="immich-asset-viewer"
   class="fixed start-0 top-0 grid size-full grid-cols-4 grid-rows-[64px_1fr] overflow-hidden bg-black"
@@ -444,9 +431,7 @@
   {#if $slideshowState != SlideshowState.None}
     <div class="absolute w-full flex">
       <SlideshowBar
-        {isFullScreen}
         assetType={previewStackedAsset?.type ?? asset.type}
-        onSetToFullScreen={() => assetViewerHtmlElement?.requestFullscreen?.()}
         onPrevious={() => navigateAsset('previous')}
         onNext={() => navigateAsset('next')}
         onClose={() => ($slideshowState = SlideshowState.StopSlideshow)}

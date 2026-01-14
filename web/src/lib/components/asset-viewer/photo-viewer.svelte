@@ -92,6 +92,18 @@
     }
   };
 
+  onMount(() => {
+    if (!wheelNavigationElement) {
+      return;
+    }
+
+    wheelNavigationElement.addEventListener('wheel', handleWheelNavigate, { capture: true, passive: false });
+
+    return () => {
+      wheelNavigationElement?.removeEventListener('wheel', handleWheelNavigate, { capture: true } as AddEventListenerOptions);
+    };
+  });
+
   zoomToggle = () => {
     photoZoomState.set({
       ...$photoZoomState,
@@ -100,6 +112,77 @@
   };
 
   const onPlaySlideshow = () => ($slideshowState = SlideshowState.PlaySlideshow);
+
+  let wheelDeltaAccumulator = $state(0);
+  let wheelDeltaLastAt = $state(0);
+  let lastWheelNavigateAt = $state(0);
+
+  let wheelNavigationElement = $state<HTMLDivElement>();
+
+  const handleWheelNavigate = (event: WheelEvent) => {
+    if (!onNextAsset && !onPreviousAsset) {
+      return;
+    }
+
+    // Allow wheel to be used for zoom/OS gestures with modifier keys
+    if (event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    if ($slideshowState !== SlideshowState.None) {
+      return;
+    }
+
+    if ($photoZoomState.currentZoom > 1) {
+      return;
+    }
+
+    if (ocrManager.showOverlay) {
+      return;
+    }
+
+    if (isFaceEditMode.value) {
+      return;
+    }
+
+    // Ignore mostly-horizontal scrolls (trackpads)
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      return;
+    }
+
+    event.stopImmediatePropagation();
+    event.preventDefault();
+
+    const now = Date.now();
+    if (now - wheelDeltaLastAt > 200) {
+      wheelDeltaAccumulator = 0;
+    }
+
+    wheelDeltaLastAt = now;
+    wheelDeltaAccumulator += event.deltaY;
+
+    // Require a meaningful wheel delta to avoid accidental navigation on trackpads
+    if (Math.abs(wheelDeltaAccumulator) < 120) {
+      return;
+    }
+
+    // Throttle actual navigation
+    if (now - lastWheelNavigateAt < 250) {
+      wheelDeltaAccumulator = 0;
+      return;
+    }
+
+    lastWheelNavigateAt = now;
+
+    const isScrollDown = wheelDeltaAccumulator > 0;
+    wheelDeltaAccumulator = 0;
+
+    if (isScrollDown) {
+      onNextAsset?.();
+    } else {
+      onPreviousAsset?.();
+    }
+  };
 
   $effect(() => {
     if (isFaceEditMode.value && $photoZoomState.currentZoom > 1) {
@@ -218,6 +301,7 @@
     <div
       use:zoomImageAction={{ disabled: isOcrActive }}
       {...useSwipe(onSwipe)}
+      bind:this={wheelNavigationElement}
       class="h-full w-full"
       transition:fade={{ duration: haveFadeTransition ? assetViewerFadeDuration : 0 }}
     >
