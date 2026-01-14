@@ -2,11 +2,12 @@ import { photoZoomState } from '$lib/stores/zoom-image.store';
 import { useZoomImageWheel } from '@zoom-image/svelte';
 import { get } from 'svelte/store';
 
-export const zoomImageAction = (node: HTMLElement, options?: { disabled?: boolean }) => {
+export const zoomImageAction = (node: HTMLElement, options?: { disabled?: boolean; disableWheelZoom?: boolean }) => {
   const { createZoomImage, zoomImageState, setZoomImageState } = useZoomImageWheel();
 
   createZoomImage(node, {
     maxZoom: 10,
+    disableWheelZoom: options?.disableWheelZoom,
   });
 
   const state = get(photoZoomState);
@@ -16,8 +17,9 @@ export const zoomImageAction = (node: HTMLElement, options?: { disabled?: boolea
 
   // Store original event handlers so we can prevent them when disabled
   const wheelHandler = (event: WheelEvent) => {
-    if (options?.disabled) {
+    if (options?.disabled || options?.disableWheelZoom) {
       event.stopImmediatePropagation();
+      event.preventDefault();
     }
   };
 
@@ -34,7 +36,7 @@ export const zoomImageAction = (node: HTMLElement, options?: { disabled?: boolea
   const unsubscribes = [photoZoomState.subscribe(setZoomImageState), zoomImageState.subscribe(photoZoomState.set)];
 
   return {
-    update(newOptions?: { disabled?: boolean }) {
+    update(newOptions?: { disabled?: boolean; disableWheelZoom?: boolean }) {
       options = newOptions;
     },
     destroy() {

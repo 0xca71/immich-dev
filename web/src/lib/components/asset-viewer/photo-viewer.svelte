@@ -133,10 +133,6 @@
       return;
     }
 
-    if ($photoZoomState.currentZoom > 1) {
-      return;
-    }
-
     if (ocrManager.showOverlay) {
       return;
     }
@@ -299,7 +295,7 @@
     </div>
   {:else if !imageError}
     <div
-      use:zoomImageAction={{ disabled: isOcrActive }}
+      use:zoomImageAction={{ disabled: isOcrActive, disableWheelZoom: true }}
       {...useSwipe(onSwipe)}
       bind:this={wheelNavigationElement}
       class="h-full w-full"
