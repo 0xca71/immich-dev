@@ -89,7 +89,10 @@
 
   timelineManager = new TimelineManager();
   onDestroy(() => timelineManager.destroy());
-  $effect(() => options && void timelineManager.updateOptions(options));
+
+  let selectedYear = $state<number | undefined>(undefined);
+
+  $effect(() => options && void timelineManager.updateOptions({ ...options, yearFilter: selectedYear }));
 
   let { isViewing: showAssetViewer, asset: viewingAsset, gridScrollTarget } = assetViewingStore;
 
@@ -372,6 +375,30 @@
     if (!timelineManager.albumAssets.has(asset.id)) {
       assetInteraction.selectAsset(asset);
     }
+  };
+
+  const onSelectYear = (year?: number) => {
+    selectedYear = year;
+    timelineManager.scrollTo(0);
+  };
+
+  const onJumpToDate = async (date: string) => {
+    const dateTime = DateTime.fromISO(date);
+    if (!dateTime.isValid) {
+      return;
+    }
+
+    const asset = await timelineManager.getClosestAssetToDate(dateTime.toObject());
+    if (!asset) {
+      return;
+    }
+
+    const monthGroup = await timelineManager.findMonthGroupForAsset({ id: asset.id });
+    if (!monthGroup) {
+      return;
+    }
+
+    scrollToAssetPosition(asset.id, monthGroup);
   };
 
   let lastAssetMouseEvent: TimelineAsset | null = $state(null);
@@ -747,7 +774,7 @@
 
 <!-- Year Filter Bar at bottom -->
 {#if timelineManager.months.length > 0}
-  <YearFilter {timelineManager} />
+  <YearFilter years={timelineManager.availableYears} {selectedYear} {onSelectYear} {onJumpToDate} />
 {/if}
 
 <style>

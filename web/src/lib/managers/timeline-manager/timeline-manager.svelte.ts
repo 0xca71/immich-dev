@@ -70,6 +70,7 @@ export class TimelineManager extends VirtualScrollManager {
   months: MonthGroup[] = $state([]);
   albumAssets: Set<string> = new SvelteSet();
   scrubberMonths: ScrubberMonth[] = $state([]);
+  availableYears: number[] = $state([]);
   scrubberTimelineHeight: number = $state(0);
   viewportTopMonthIntersection: ViewportTopMonthIntersection | undefined;
   limitedScroll = $derived(this.maxScrollPercent < 0.5);
@@ -232,12 +233,13 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   async #initializeMonthGroups() {
+    const { yearFilter, ...apiOptions } = this.#options;
     const timebuckets = await getTimeBuckets({
       ...authManager.params,
-      ...this.#options,
+      ...apiOptions,
     });
 
-    this.months = timebuckets.map((timeBucket) => {
+    const allMonths = timebuckets.map((timeBucket) => {
       const date = new SvelteDate(timeBucket.timeBucket);
       return new MonthGroup(
         this,
@@ -247,6 +249,14 @@ export class TimelineManager extends VirtualScrollManager {
         this.#options.order,
       );
     });
+
+    const years = new Set<number>();
+    for (const month of allMonths) {
+      years.add(month.yearMonth.year);
+    }
+    this.availableYears = [...years].sort((a, b) => b - a);
+
+    this.months = yearFilter ? allMonths.filter((month) => month.yearMonth.year === yearFilter) : allMonths;
     this.albumAssets.clear();
     this.updateViewportGeometry(false);
   }

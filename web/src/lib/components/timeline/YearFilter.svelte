@@ -1,48 +1,23 @@
 <script lang="ts">
-  import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
-  import { mobileDevice } from '$lib/stores/mobile-device.svelte';
-  import { DateTime } from 'luxon';
-
   interface Props {
-    timelineManager: TimelineManager;
+    years: number[];
+    selectedYear?: number;
+    onSelectYear?: (year?: number) => void;
+    onJumpToDate?: (date: string) => void;
   }
 
-  let { timelineManager }: Props = $props();
+  let { years, selectedYear = undefined, onSelectYear = () => {}, onJumpToDate = () => {} }: Props = $props();
 
-  // Get unique years from timeline scrubber months
-  const availableYears = $derived(() => {
-    const years = new Set(timelineManager.scrubberMonths.map((m) => m.year));
-    return Array.from(years).sort((a, b) => b - a); // Sort descending (newest first)
+  let jumpDate = $state('');
+
+  $effect(() => {
+    if (selectedYear === undefined) {
+      jumpDate = '';
+    }
   });
 
-  const isMobile = $derived(mobileDevice.maxMd);
-
-  // Find the first month group for a given year and scroll to it
-  const jumpToYear = async (year: number) => {
-    // Find the first month of the selected year
-    const monthGroup = timelineManager.months.find(
-      ({ yearMonth: { year: y, month: m } }) => y === year && m === 1
-    );
-
-    if (monthGroup) {
-      // Scroll to that month
-      timelineManager.scrollTo(monthGroup.top);
-    } else {
-      // If we don't have data for that year yet, try to find the closest asset
-      try {
-        const dateTime = DateTime.fromObject({ year, month: 1, day: 1 });
-        const asset = await timelineManager.getClosestAssetToDate(dateTime.toObject());
-        if (asset) {
-          const assetMonthGroup = timelineManager.getMonthGroupByAssetId(asset.id);
-          if (assetMonthGroup) {
-            timelineManager.scrollTo(assetMonthGroup.top);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to jump to year:', error);
-      }
-    }
-  };
+  const minDate = $derived(() => (selectedYear === undefined ? '' : `${selectedYear}-01-01`));
+  const maxDate = $derived(() => (selectedYear === undefined ? '' : `${selectedYear}-12-31`));
 </script>
 
 <div class="year-filter-bar">
@@ -50,16 +25,40 @@
     <div class="year-filter-label">快速跳转:</div>
 
     <div class="year-filter-buttons">
-      {#each availableYears as year}
+      <button
+        type="button"
+        class="year-filter-button"
+        class:active={selectedYear === undefined}
+        onclick={() => onSelectYear(undefined)}
+      >
+        全部
+      </button>
+
+      {#each years as year}
         <button
           type="button"
           class="year-filter-button"
-          onclick={() => jumpToYear(year)}
+          class:active={selectedYear === year}
+          onclick={() => onSelectYear(year)}
         >
           {year}
         </button>
       {/each}
     </div>
+
+    {#if selectedYear !== undefined}
+      <div class="year-filter-date">
+        <input type="date" bind:value={jumpDate} min={minDate} max={maxDate} />
+        <button
+          type="button"
+          class="year-filter-button"
+          disabled={!jumpDate}
+          onclick={() => jumpDate && onJumpToDate(jumpDate)}
+        >
+          跳转
+        </button>
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -102,6 +101,26 @@
     align-items: center;
   }
 
+  .year-filter-date {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .year-filter-date input[type='date'] {
+    height: 2.25rem;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    padding: 0 0.5rem;
+  }
+
+  .year-filter-date input[type='date']::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+
   .year-filter-button {
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
@@ -114,6 +133,12 @@
     transition: all 0.2s ease;
     white-space: nowrap;
     flex-shrink: 0;
+  }
+
+  .year-filter-button.active {
+    background-color: rgba(255, 255, 255, 0.25);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.45);
   }
 
   .year-filter-button:hover {
