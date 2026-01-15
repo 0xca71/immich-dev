@@ -17,7 +17,7 @@ export const zoomImageAction = (node: HTMLElement, options?: { disabled?: boolea
 
   // Store original event handlers so we can prevent them when disabled
   const wheelHandler = (event: WheelEvent) => {
-    if (options?.disabled || options?.disableWheelZoom) {
+    if (options?.disabled) {
       event.stopImmediatePropagation();
       event.preventDefault();
     }

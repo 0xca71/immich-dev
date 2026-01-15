@@ -93,14 +93,9 @@
   };
 
   onMount(() => {
-    if (!wheelNavigationElement) {
-      return;
-    }
-
-    wheelNavigationElement.addEventListener('wheel', handleWheelNavigate, { capture: true, passive: false });
-
+    document.addEventListener('wheel', handleWheelNavigate, { capture: true, passive: false });
     return () => {
-      wheelNavigationElement?.removeEventListener('wheel', handleWheelNavigate, { capture: true } as AddEventListenerOptions);
+      document.removeEventListener('wheel', handleWheelNavigate, { capture: true } as AddEventListenerOptions);
     };
   });
 
@@ -121,6 +116,11 @@
 
   const handleWheelNavigate = (event: WheelEvent) => {
     if (!onNextAsset && !onPreviousAsset) {
+      return;
+    }
+
+    const isInViewer = !!wheelNavigationElement && event.composedPath().includes(wheelNavigationElement);
+    if (!isInViewer) {
       return;
     }
 
