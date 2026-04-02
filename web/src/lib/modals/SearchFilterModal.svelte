@@ -86,7 +86,9 @@
         isNotInAlbum: 'isNotInAlbum' in searchQuery ? (searchQuery.isNotInAlbum ?? false) : false,
       },
       mediaType:
-        searchQuery.type === AssetTypeEnum.Image
+        searchQuery.isMotion
+          ? MediaType.LivePhoto
+          : searchQuery.type === AssetTypeEnum.Image
           ? MediaType.Image
           : searchQuery.type === AssetTypeEnum.Video
             ? MediaType.Video
@@ -119,10 +121,14 @@
 
   const search = () => {
     let type: AssetTypeEnum | undefined = undefined;
+    let isMotion: boolean | undefined = undefined;
     if (filter.mediaType === MediaType.Image) {
       type = AssetTypeEnum.Image;
     } else if (filter.mediaType === MediaType.Video) {
       type = AssetTypeEnum.Video;
+    } else if (filter.mediaType === MediaType.LivePhoto) {
+      type = AssetTypeEnum.Image;
+      isMotion = true;
     }
 
     const query = filter.query || undefined;
@@ -147,6 +153,7 @@
       personIds: filter.personIds.size > 0 ? [...filter.personIds] : undefined,
       tagIds: filter.tagIds === null ? null : filter.tagIds.size > 0 ? [...filter.tagIds] : undefined,
       type,
+      isMotion,
       rating: filter.rating,
     };
 

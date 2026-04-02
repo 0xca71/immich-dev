@@ -31,6 +31,13 @@
         label={$t('video')}
         value={MediaType.Video}
       />
+      <RadioButton
+        name="media-type"
+        id="type-live-photo"
+        bind:group={filteredMedia}
+        label={$t('search_page_motion_photos')}
+        value={MediaType.LivePhoto}
+      />
     </div>
   </fieldset>
 </div>

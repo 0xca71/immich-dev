@@ -32,6 +32,7 @@
   import { isAlbumsRoute, isPeopleRoute } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import {
+    AssetTypeEnum,
     type AlbumResponseDto,
     type AssetResponseDto,
     getPerson,
@@ -172,6 +173,7 @@
       takenBefore: $t('end_date'),
       visibility: $t('in_archive'),
       isFavorite: $t('favorite'),
+      isMotion: $t('media_type'),
       isNotInAlbum: $t('not_in_any_album'),
       type: $t('media_type'),
       query: $t('context'),
@@ -246,37 +248,48 @@
     class="mt-24 text-center w-full flex gap-5 place-content-center place-items-center flex-wrap px-24"
   >
     {#each getObjectKeys(terms) as searchKey (searchKey)}
-      {@const value = terms[searchKey]}
-      <div class="flex place-content-center place-items-center items-stretch text-xs">
-        <div
-          class="flex items-center justify-center bg-immich-primary py-2 px-4 text-white dark:text-black dark:bg-immich-dark-primary
-          {value === true ? 'rounded-full' : 'rounded-s-full'}"
-        >
-          {getHumanReadableSearchKey(searchKey as keyof SearchTerms)}
-        </div>
-
-        {#if value !== true}
-          <div class="bg-gray-300 py-2 px-4 dark:bg-gray-800 dark:text-white rounded-e-full">
-            {#if (searchKey === 'takenAfter' || searchKey === 'takenBefore') && typeof value === 'string'}
-              {getHumanReadableDate(value)}
-            {:else if searchKey === 'personIds' && Array.isArray(value)}
-              {#await getPersonName(value) then personName}
-                {personName}
-              {/await}
-            {:else if searchKey === 'tagIds' && (Array.isArray(value) || value === null)}
-              {#await getTagNames(value) then tagNames}
-                {tagNames}
-              {/await}
-            {:else if searchKey === 'rating'}
-              {$t('rating_count', { values: { count: value ?? 0 } })}
-            {:else if value === null || value === ''}
-              {$t('unknown')}
-            {:else}
-              {value}
-            {/if}
+      {#if !(searchKey === 'type' && terms.isMotion)}
+        {@const value = terms[searchKey]}
+        {@const hasValuePill = (searchKey === 'isMotion' && value === true) || value !== true}
+        <div class="flex place-content-center place-items-center items-stretch text-xs">
+          <div
+            class="flex items-center justify-center bg-immich-primary py-2 px-4 text-white dark:text-black dark:bg-immich-dark-primary
+            {hasValuePill ? 'rounded-s-full' : 'rounded-full'}"
+          >
+            {getHumanReadableSearchKey(searchKey as keyof SearchTerms)}
           </div>
-        {/if}
-      </div>
+
+          {#if searchKey === 'isMotion' && value === true}
+            <div class="bg-gray-300 py-2 px-4 dark:bg-gray-800 dark:text-white rounded-e-full">
+              {$t('search_page_motion_photos')}
+            </div>
+          {:else if value !== true}
+            <div class="bg-gray-300 py-2 px-4 dark:bg-gray-800 dark:text-white rounded-e-full">
+              {#if (searchKey === 'takenAfter' || searchKey === 'takenBefore') && typeof value === 'string'}
+                {getHumanReadableDate(value)}
+              {:else if searchKey === 'personIds' && Array.isArray(value)}
+                {#await getPersonName(value) then personName}
+                  {personName}
+                {/await}
+              {:else if searchKey === 'tagIds' && (Array.isArray(value) || value === null)}
+                {#await getTagNames(value) then tagNames}
+                  {tagNames}
+                {/await}
+              {:else if searchKey === 'type' && value === AssetTypeEnum.Image}
+                {$t('image')}
+              {:else if searchKey === 'type' && value === AssetTypeEnum.Video}
+                {$t('video')}
+              {:else if searchKey === 'rating'}
+                {$t('rating_count', { values: { count: value ?? 0 } })}
+              {:else if value === null || value === ''}
+                {$t('unknown')}
+              {:else}
+                {value}
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
     {/each}
   </section>
 {/if}
