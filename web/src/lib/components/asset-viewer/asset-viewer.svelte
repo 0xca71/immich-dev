@@ -106,10 +106,12 @@
   const nextAsset = $derived(cursor.nextAsset);
   const previousAsset = $derived(cursor.previousAsset);
   let sharedLink = getSharedLink();
-  let fullscreenElement = $state<Element>();
 
   let playOriginalVideo = $state($alwaysLoadOriginalVideo);
   let slideshowStartAssetId = $state<string>();
+  let wheelDeltaAccumulator = $state(0);
+  let wheelDeltaLastAt = $state(0);
+  let lastWheelNavigateAt = $state(0);
 
   const setPlayOriginalVideo = (value: boolean) => {
     playOriginalVideo = value;
@@ -251,8 +253,6 @@
    * Slide show mode
    */
 
-  let assetViewerHtmlElement = $state<HTMLElement>();
-
   const slideshowHistory = new SlideshowHistory((asset) => {
     handlePromiseError(assetViewerManager.setAssetId(asset.id).then(() => ($restartSlideshowProgress = true)));
   });
@@ -265,26 +265,12 @@
 
   const handlePlaySlideshow = async () => {
     slideshowStartAssetId = asset.id;
-    try {
-      await assetViewerHtmlElement?.requestFullscreen?.();
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_enter_fullscreen'));
-      $slideshowState = SlideshowState.StopSlideshow;
-    }
   };
 
   const handleStopSlideshow = async () => {
-    try {
-      if (document.fullscreenElement) {
-        document.body.style.cursor = '';
-        await document.exitFullscreen();
-      }
-    } catch (error) {
-      handleError(error, $t('errors.unable_to_exit_fullscreen'));
-    } finally {
-      $stopSlideshowProgress = true;
-      $slideshowState = SlideshowState.None;
-    }
+    document.body.style.cursor = '';
+    $stopSlideshowProgress = true;
+    $slideshowState = SlideshowState.None;
   };
 
   const handleStackedAssetMouseEvent = (isMouseOver: boolean, stackedAsset: AssetResponseDto) => {
@@ -337,8 +323,6 @@
 
     onAction?.(action);
   };
-
-  let isFullScreen = $derived(fullscreenElement !== null);
 
   $effect(() => {
     if (album && !album.isActivityEnabled && activityManager.commentCount === 0) {
@@ -450,18 +434,56 @@
       navigateAsset('previous');
     }
   };
+
+  const handleSlideshowWheel = (event: WheelEvent) => {
+    if ($slideshowState !== SlideshowState.PlaySlideshow) {
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.preventDefault();
+
+    const now = Date.now();
+    if (now - wheelDeltaLastAt > 200) {
+      wheelDeltaAccumulator = 0;
+    }
+
+    wheelDeltaLastAt = now;
+    wheelDeltaAccumulator += event.deltaY;
+
+    if (Math.abs(wheelDeltaAccumulator) < 120) {
+      return;
+    }
+
+    if (now - lastWheelNavigateAt < 250) {
+      wheelDeltaAccumulator = 0;
+      return;
+    }
+
+    lastWheelNavigateAt = now;
+
+    const isScrollDown = wheelDeltaAccumulator > 0;
+    wheelDeltaAccumulator = 0;
+    navigateAsset(isScrollDown ? 'next' : 'previous');
+  };
 </script>
 
 <CommandPaletteDefaultProvider name={$t('assets')} actions={[Tag, TagPeople]} />
 <OnEvents {onAssetUpdate} />
 
-<svelte:document bind:fullscreenElement />
-
 <section
   id="immich-asset-viewer"
   class="fixed start-0 top-0 grid size-full grid-cols-4 grid-rows-[64px_1fr] overflow-hidden bg-black"
   use:focusTrap
-  bind:this={assetViewerHtmlElement}
+  onwheel={handleSlideshowWheel}
 >
   <!-- Top navigation bar -->
   {#if $slideshowState === SlideshowState.None && !assetViewerManager.isShowEditor}
@@ -487,9 +509,7 @@
   {#if $slideshowState != SlideshowState.None}
     <div class="absolute inset-s-0 top-0 flex w-full justify-start">
       <SlideshowBar
-        {isFullScreen}
         assetType={previewStackedAsset?.type ?? asset.type}
-        onSetToFullScreen={() => assetViewerHtmlElement?.requestFullscreen?.()}
         onPrevious={() => navigateAsset('previous')}
         onNext={() => navigateAsset('next')}
         onClose={() => ($slideshowState = SlideshowState.StopSlideshow)}
