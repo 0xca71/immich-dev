@@ -2158,6 +2158,8 @@
   "skip_to_content": "跳转到内容",
   "skip_to_folders": "跳转到文件夹",
   "skip_to_tags": "跳转到标签",
+  "skip_motion_photos_in_slideshow": "在幻灯片放映中跳过实况照片",
+  "skip_videos_in_slideshow": "在幻灯片放映中跳过视频",
   "slideshow": "幻灯片放映",
   "slideshow_repeat": "重复幻灯片",
   "slideshow_repeat_description": "幻灯片结束后循环播放",

@@ -21,6 +21,8 @@
     slideshowTransition,
     slideshowAutoplay,
     slideshowRepeat,
+    slideshowSkipVideos,
+    slideshowSkipMotionPhotos,
     slideshowState,
   } = slideshowStore;
 
@@ -38,6 +40,8 @@
   let tempSlideshowTransition = $state($slideshowTransition);
   let tempSlideshowAutoplay = $state($slideshowAutoplay);
   let tempSlideshowRepeat = $state($slideshowRepeat);
+  let tempSlideshowSkipVideos = $state($slideshowSkipVideos);
+  let tempSlideshowSkipMotionPhotos = $state($slideshowSkipMotionPhotos);
 
   const navigationOptions: Record<SlideshowNavigation, RenderedOption> = {
     [SlideshowNavigation.Shuffle]: { icon: mdiShuffle, title: $t('shuffle') },
@@ -70,6 +74,8 @@
     $slideshowTransition = tempSlideshowTransition;
     $slideshowAutoplay = tempSlideshowAutoplay;
     $slideshowRepeat = tempSlideshowRepeat;
+    $slideshowSkipVideos = tempSlideshowSkipVideos;
+    $slideshowSkipMotionPhotos = tempSlideshowSkipMotionPhotos;
     $slideshowState = SlideshowState.PlaySlideshow;
     onClose();
   };
@@ -109,6 +115,14 @@
 
     <Field label={$t('slideshow_repeat')} description={$t('slideshow_repeat_description')}>
       <Switch bind:checked={tempSlideshowRepeat} />
+    </Field>
+
+    <Field label={$t('skip_videos_in_slideshow')}>
+      <Switch bind:checked={tempSlideshowSkipVideos} />
+    </Field>
+
+    <Field label={$t('skip_motion_photos_in_slideshow')}>
+      <Switch bind:checked={tempSlideshowSkipMotionPhotos} />
     </Field>
 
     <Field label={$t('duration')}>

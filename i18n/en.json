@@ -2159,6 +2159,8 @@
   "skip_to_content": "Skip to content",
   "skip_to_folders": "Skip to folders",
   "skip_to_tags": "Skip to tags",
+  "skip_motion_photos_in_slideshow": "Skip motion photos in slideshow",
+  "skip_videos_in_slideshow": "Skip videos in slideshow",
   "slideshow": "Slideshow",
   "slideshow_repeat": "Repeat slideshow",
   "slideshow_repeat_description": "Loop back to beginning when slideshow ends",

@@ -41,6 +41,8 @@ function createSlideshowStore() {
   const slideshowTransition = persisted<boolean>('slideshow-transition', true);
   const slideshowAutoplay = persisted<boolean>('slideshow-autoplay', true, {});
   const slideshowRepeat = persisted<boolean>('slideshow-repeat', false);
+  const slideshowSkipVideos = persisted<boolean>('slideshow-skip-videos', false);
+  const slideshowSkipMotionPhotos = persisted<boolean>('slideshow-skip-motion-photos', false);
 
   return {
     restartProgress: {
@@ -73,6 +75,8 @@ function createSlideshowStore() {
     slideshowTransition,
     slideshowAutoplay,
     slideshowRepeat,
+    slideshowSkipVideos,
+    slideshowSkipMotionPhotos,
   };
 }
 

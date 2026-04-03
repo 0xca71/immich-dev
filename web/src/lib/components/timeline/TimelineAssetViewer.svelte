@@ -1,6 +1,10 @@
 <script lang="ts">
   import type { Action } from '$lib/components/asset-viewer/actions/action';
-  import type { AssetCursor } from '$lib/components/asset-viewer/asset-viewer.svelte';
+  import type {
+    AssetCursor,
+    SlideshowRandomAssetResolver,
+    SlideshowStepAssetResolver,
+  } from '$lib/components/asset-viewer/asset-viewer.svelte';
   import { AssetAction } from '$lib/constants';
   import { assetViewerManager } from '$lib/managers/asset-viewer-manager.svelte';
   import { assetCacheManager } from '$lib/managers/AssetCacheManager.svelte';
@@ -94,6 +98,28 @@
 
     await navigate({ targetRoute: 'current', assetId: randomAsset.id });
     return { id: randomAsset.id };
+  };
+
+  const resolveSlideshowStepAsset: SlideshowStepAssetResolver = async (asset, order) => {
+    return order === 'previous' ? await getPreviousAsset(asset) : await getNextAsset(asset);
+  };
+
+  const resolveSlideshowRandomAsset: SlideshowRandomAssetResolver = async (isPlayable) => {
+    const triedAssetIds = new Set<string>();
+    const maxAttempts = Math.min(Math.max(timelineManager.assetCount, 10), 100);
+
+    for (let attempt = 0; attempt < maxAttempts && triedAssetIds.size < timelineManager.assetCount; attempt++) {
+      const randomAsset = await timelineManager.getRandomAsset();
+      if (!randomAsset || triedAssetIds.has(randomAsset.id)) {
+        continue;
+      }
+
+      triedAssetIds.add(randomAsset.id);
+      const asset = await getAsset(randomAsset.id);
+      if (asset && isPlayable(asset)) {
+        return asset;
+      }
+    }
   };
 
   const handleClose = async (asset: { id: string }) => {
@@ -249,6 +275,8 @@
     }}
     onUndoDelete={handleUndoDelete}
     onRandom={handleRandom}
+    {resolveSlideshowStepAsset}
+    {resolveSlideshowRandomAsset}
     onRemoveFromAlbum={handleRemoveFromAlbum}
     onClose={handleClose}
   />
