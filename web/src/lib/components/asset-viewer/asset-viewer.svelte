@@ -101,6 +101,7 @@
 
   let previewStackedAsset: AssetResponseDto | undefined = $state();
   let stack: StackResponseDto | null = $state(null);
+  let assetViewerElement = $state<HTMLElement>();
 
   const asset = $derived(previewStackedAsset ?? cursor.current);
   const nextAsset = $derived(cursor.nextAsset);
@@ -109,9 +110,8 @@
 
   let playOriginalVideo = $state($alwaysLoadOriginalVideo);
   let slideshowStartAssetId = $state<string>();
-  let wheelDeltaAccumulator = $state(0);
-  let wheelDeltaLastAt = $state(0);
-  let lastWheelNavigateAt = $state(0);
+  const wheelZoomSpeedDivisor = 300;
+  const wheelZoomSpeedLimit = 0.35;
 
   const setPlayOriginalVideo = (value: boolean) => {
     playOriginalVideo = value;
@@ -151,6 +151,13 @@
 
   onMount(() => {
     syncAssetViewerOpenClass(true);
+    const wheelAbortController = new AbortController();
+    assetViewerElement?.addEventListener('wheel', handleAssetViewerWheel, {
+      capture: true,
+      passive: false,
+      signal: wheelAbortController.signal,
+    });
+
     const slideshowStateUnsubscribe = slideshowState.subscribe((value) => {
       if (value === SlideshowState.PlaySlideshow) {
         slideshowHistory.reset();
@@ -169,6 +176,7 @@
     });
 
     return () => {
+      wheelAbortController.abort();
       slideshowStateUnsubscribe();
       slideshowNavigationUnsubscribe();
     };
@@ -436,10 +444,6 @@
   };
 
   const handleSlideshowWheel = (event: WheelEvent) => {
-    if ($slideshowState !== SlideshowState.PlaySlideshow) {
-      return;
-    }
-
     if (event.ctrlKey || event.metaKey) {
       return;
     }
@@ -450,29 +454,71 @@
 
     event.stopPropagation();
     event.preventDefault();
-
-    const now = Date.now();
-    if (now - wheelDeltaLastAt > 200) {
-      wheelDeltaAccumulator = 0;
-    }
-
-    wheelDeltaLastAt = now;
-    wheelDeltaAccumulator += event.deltaY;
-
-    if (Math.abs(wheelDeltaAccumulator) < 120) {
-      return;
-    }
-
-    if (now - lastWheelNavigateAt < 250) {
-      wheelDeltaAccumulator = 0;
-      return;
-    }
-
-    lastWheelNavigateAt = now;
-
-    const isScrollDown = wheelDeltaAccumulator > 0;
-    wheelDeltaAccumulator = 0;
+    const isScrollDown = event.deltaY > 0;
     navigateAsset(isScrollDown ? 'next' : 'previous');
+  };
+
+  const handlePhotoViewerWheelZoom = (event: WheelEvent) => {
+    if (viewerKind !== 'PhotoViewer' || event.ctrlKey || event.metaKey) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.preventDefault();
+    assetViewerManager.cancelZoomAnimation();
+
+    const zoomDelta = Math.max(
+      -wheelZoomSpeedLimit,
+      Math.min(wheelZoomSpeedLimit, -event.deltaY / wheelZoomSpeedDivisor),
+    );
+    if (zoomDelta === 0) {
+      return;
+    }
+
+    const nextZoom = Math.max(1, Math.min(10, assetViewerManager.zoom + zoomDelta));
+    if (nextZoom === assetViewerManager.zoom) {
+      return;
+    }
+
+    assetViewerManager.zoomState = {
+      ...assetViewerManager.zoomState,
+      currentZoom: nextZoom < 1.01 ? 1 : nextZoom,
+    };
+  };
+
+  const handleAssetViewerWheel = (event: WheelEvent) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!target.closest('[data-viewer-content]')) {
+      return;
+    }
+
+    if (target.closest('[data-overlay-interactive]')) {
+      return;
+    }
+
+    if ($slideshowState === SlideshowState.PlaySlideshow) {
+      handleSlideshowWheel(event);
+      return;
+    }
+
+    if (viewerKind !== 'PhotoViewer') {
+      return;
+    }
+
+    if (event.altKey) {
+      handlePhotoViewerWheelZoom(event);
+      return;
+    }
+
+    if (assetViewerManager.isShowEditor || assetViewerManager.isFaceEditMode) {
+      return;
+    }
+
+    handleSlideshowWheel(event);
   };
 </script>
 
@@ -482,8 +528,8 @@
 <section
   id="immich-asset-viewer"
   class="fixed start-0 top-0 grid size-full grid-cols-4 grid-rows-[64px_1fr] overflow-hidden bg-black"
+  bind:this={assetViewerElement}
   use:focusTrap
-  onwheel={handleSlideshowWheel}
 >
   <!-- Top navigation bar -->
   {#if $slideshowState === SlideshowState.None && !assetViewerManager.isShowEditor}
