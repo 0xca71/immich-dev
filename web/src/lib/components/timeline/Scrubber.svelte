@@ -200,6 +200,15 @@
   };
   let activeSegment: HTMLElement | undefined = $state();
   const segments = $derived(calculateSegments(timelineManager.scrubberMonths));
+  const formatHoverDate = (date: { year: number; month: number; day: number }) =>
+    DateTime.fromObject(date, { zone: 'local', locale: get(locale) }).toLocaleString(
+      {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      },
+      { locale: get(locale) },
+    );
   const getEstimatedHoverLabel = (segment: Segment | undefined, percent: number) => {
     if (!segment) {
       return undefined;
@@ -228,29 +237,65 @@
       { locale: get(locale) },
     );
   };
-  const hoverLabel = $derived.by(() => {
+  const getSegmentYearMonth = (segment: Segment | undefined) =>
+    segment ? { year: segment.year, month: segment.month } : undefined;
+  const getActiveSegmentYearMonth = () => {
+    if (!activeSegment?.dataset.segmentYearMonth) {
+      return undefined;
+    }
+
+    const [year, month] = activeSegment.dataset.segmentYearMonth.split('-').map(Number);
+    return { year, month };
+  };
+  const hoverYearMonth = $derived.by(() => {
     if (isHoverOnPaddingTop) {
-      return getEstimatedHoverLabel(segments.at(0), 0);
+      return getSegmentYearMonth(segments.at(0));
     }
     if (isHoverOnPaddingBottom) {
-      return getEstimatedHoverLabel(segments.at(-1), 0.999_999);
+      return getSegmentYearMonth(segments.at(-1));
+    }
+    return getActiveSegmentYearMonth();
+  });
+  const hoverYearMonthKey = $derived(hoverYearMonth ? `${hoverYearMonth.year}-${hoverYearMonth.month}` : undefined);
+  const getActualHoverLabel = (yearMonth: { year: number; month: number } | undefined, percent: number) => {
+    if (!yearMonth) {
+      return undefined;
+    }
+
+    const actualDate = timelineManager.getScrubberDateAtMonthScrollPercent(yearMonth, percent);
+    return actualDate ? formatHoverDate(actualDate) : undefined;
+  };
+  const hoverLabel = $derived.by(() => {
+    if (isHoverOnPaddingTop) {
+      return getActualHoverLabel(getSegmentYearMonth(segments.at(0)), 0) ?? getEstimatedHoverLabel(segments.at(0), 0);
+    }
+    if (isHoverOnPaddingBottom) {
+      return (
+        getActualHoverLabel(getSegmentYearMonth(segments.at(-1)), 0.999_999) ??
+        getEstimatedHoverLabel(segments.at(-1), 0.999_999)
+      );
     }
     if (!activeSegment?.dataset.segmentYearMonth) {
       return activeSegment?.dataset.label;
     }
 
-    const [year, month] = activeSegment.dataset.segmentYearMonth.split('-').map(Number);
-    return getEstimatedHoverLabel(
-      {
-        count: 0,
-        dateFormatted: activeSegment.dataset.label ?? '',
-        hasDot: false,
-        hasLabel: false,
-        height: 0,
-        month,
-        year,
-      },
-      hoverSegmentScrollPercent,
+    const segmentYearMonth = getActiveSegmentYearMonth();
+    return (
+      getActualHoverLabel(segmentYearMonth, hoverSegmentScrollPercent) ??
+      getEstimatedHoverLabel(
+        segmentYearMonth
+          ? {
+              count: 0,
+              dateFormatted: activeSegment.dataset.label ?? '',
+              hasDot: false,
+              hasLabel: false,
+              height: 0,
+              month: segmentYearMonth.month,
+              year: segmentYearMonth.year,
+            }
+          : undefined,
+        hoverSegmentScrollPercent,
+      )
     );
   });
   const segmentDate: ViewportTopMonth = $derived.by(() => {
@@ -542,6 +587,21 @@
       onScrubKeyDown?.(event, event.currentTarget as HTMLElement);
     }
   };
+
+  $effect(() => {
+    const monthKey = hoverYearMonthKey;
+    const yearMonth = hoverYearMonth;
+    const shouldPrefetchMonth = !usingMobileDevice && (isHover || isDragging) && monthKey && yearMonth;
+    if (!shouldPrefetchMonth) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void timelineManager.ensureScrubberMonthGeometry(yearMonth);
+    }, 120);
+
+    return () => window.clearTimeout(timeout);
+  });
 </script>
 
 <svelte:window

@@ -9,6 +9,44 @@ import { tick } from 'svelte';
 import { TimelineManager } from './timeline-manager.svelte';
 import type { TimelineAsset } from './types';
 
+vi.hoisted(() => {
+  const store = new Map<string, string>();
+  const localStorageMock: Storage = {
+    get length() {
+      return store.size;
+    },
+    clear: () => store.clear(),
+    getItem: (key: string) => store.get(key) ?? null,
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+  };
+
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: localStorageMock,
+    writable: true,
+  });
+});
+
+vi.mock('$lib/stores/preferences.store', async () => {
+  const { writable } = await import('svelte/store');
+  return {
+    locale: writable('en'),
+  };
+});
+
+vi.mock('$app/environment', () => ({
+  browser: true,
+  building: false,
+  dev: true,
+  version: 'test',
+}));
+
 async function getAssets(timelineManager: TimelineManager) {
   const assets = [];
   for await (const asset of timelineManager.assetsIterator()) {
@@ -191,6 +229,39 @@ describe('TimelineManager', () => {
 
       await timelineManager.loadMonthGroup({ year: 2024, month: 1 });
       expect(month!.getAssets().length).toEqual(3);
+    });
+
+    it('maps scrubber hover to the actual loaded day layout', async () => {
+      timelineManager = new TimelineManager();
+      sdkMock.getTimeBuckets.mockResolvedValue([{ count: 2, timeBucket: '2024-01-01T00:00:00.000Z' }]);
+      sdkMock.getTimeBucket.mockResolvedValue(
+        toResponseDto(
+          deriveLocalDateTimeFromFileCreatedAt(
+            timelineAssetFactory.build({
+              fileCreatedAt: fromISODateTimeUTCToObject('2024-01-30T12:00:00.000Z'),
+            }),
+          ),
+          deriveLocalDateTimeFromFileCreatedAt(
+            timelineAssetFactory.build({
+              fileCreatedAt: fromISODateTimeUTCToObject('2024-01-02T12:00:00.000Z'),
+            }),
+          ),
+        ),
+      );
+
+      await timelineManager.updateViewport({ width: 120, height: 1000 });
+      await timelineManager.ensureScrubberMonthGeometry({ year: 2024, month: 1 });
+
+      expect(timelineManager.getScrubberDateAtMonthScrollPercent({ year: 2024, month: 1 }, 0.1)).toEqual({
+        year: 2024,
+        month: 1,
+        day: 30,
+      });
+      expect(timelineManager.getScrubberDateAtMonthScrollPercent({ year: 2024, month: 1 }, 0.95)).toEqual({
+        year: 2024,
+        month: 1,
+        day: 2,
+      });
     });
   });
 
