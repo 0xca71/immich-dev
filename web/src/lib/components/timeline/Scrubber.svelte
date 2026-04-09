@@ -200,12 +200,30 @@
   };
   let activeSegment: HTMLElement | undefined = $state();
   const segments = $derived(calculateSegments(timelineManager.scrubberMonths));
+  const isSingleYearScrubber = $derived.by(() => {
+    if (timelineManager.availableYears.length <= 1 || segments.length === 0) {
+      return false;
+    }
+
+    const firstYear = segments[0]?.year;
+    return firstYear !== undefined && segments.every((segment) => segment.year === firstYear);
+  });
   const formatHoverDate = (date: { year: number; month: number; day: number }) =>
     DateTime.fromObject(date, { zone: 'local', locale: get(locale) }).toLocaleString(
       {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
+      },
+      { locale: get(locale) },
+    );
+  const formatMonthTickLabel = (segment: Segment) =>
+    DateTime.fromObject(
+      { year: segment.year, month: segment.month, day: 1 },
+      { zone: 'local', locale: get(locale) },
+    ).toLocaleString(
+      {
+        month: 'short',
       },
       { locale: get(locale) },
     );
@@ -702,12 +720,16 @@
       style:height={segment.height + 'px'}
     >
       {#if !usingMobileDevice}
-        {#if segment.hasLabel}
+        {#if !isSingleYearScrubber && segment.hasLabel}
           <div class="absolute end-5 text-[13px] dark:text-immich-dark-fg font-mono bottom-0">
             {segment.year}
           </div>
         {/if}
-        {#if segment.hasDot}
+        {#if isSingleYearScrubber && segment.hasDot}
+          <div class="absolute end-2 bottom-0 text-[11px] leading-none whitespace-nowrap text-gray-500 dark:text-gray-400">
+            {formatMonthTickLabel(segment)}
+          </div>
+        {:else if segment.hasDot}
           <div class="absolute end-3 bottom-0 h-1 w-1 rounded-full bg-gray-300"></div>
         {/if}
       {/if}

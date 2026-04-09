@@ -149,6 +149,59 @@ describe('TimelineManager', () => {
         })),
       ).toEqual([{ year: 2024, month: 2 }]);
     });
+
+    it('eagerly loads all months when a single display year is selected', async () => {
+      timelineManager = new TimelineManager();
+      sdkMock.getTimeBuckets.mockResolvedValue([
+        { count: 2, timeBucket: '2024-02-01' },
+        { count: 2, timeBucket: '2024-01-01' },
+        { count: 1, timeBucket: '2023-12-01' },
+      ]);
+      sdkMock.getTimeBucket.mockImplementation(({ timeBucket }) => {
+        const responses: Record<string, TimeBucketAssetResponseDto> = {
+          '2024-02-01T00:00:00.000Z': toResponseDto(
+            deriveLocalDateTimeFromFileCreatedAt(
+              timelineAssetFactory.build({
+                fileCreatedAt: fromISODateTimeUTCToObject('2024-02-28T12:00:00.000Z'),
+              }),
+            ),
+            deriveLocalDateTimeFromFileCreatedAt(
+              timelineAssetFactory.build({
+                fileCreatedAt: fromISODateTimeUTCToObject('2024-02-02T12:00:00.000Z'),
+              }),
+            ),
+          ),
+          '2024-01-01T00:00:00.000Z': toResponseDto(
+            deriveLocalDateTimeFromFileCreatedAt(
+              timelineAssetFactory.build({
+                fileCreatedAt: fromISODateTimeUTCToObject('2024-01-30T12:00:00.000Z'),
+              }),
+            ),
+            deriveLocalDateTimeFromFileCreatedAt(
+              timelineAssetFactory.build({
+                fileCreatedAt: fromISODateTimeUTCToObject('2024-01-02T12:00:00.000Z'),
+              }),
+            ),
+          ),
+        };
+
+        return Promise.resolve(responses[timeBucket]);
+      });
+
+      await timelineManager.updateViewport({ width: 120, height: 1000 });
+      await timelineManager.updateOptions({ displayYear: 2024 });
+
+      const requestedBuckets = sdkMock.getTimeBucket.mock.calls.map(([request]) => request.timeBucket);
+      expect(requestedBuckets).toContain('2024-02-01T00:00:00.000Z');
+      expect(requestedBuckets).toContain('2024-01-01T00:00:00.000Z');
+      expect(timelineManager.months).toHaveLength(2);
+      expect(timelineManager.months.every((month) => month.isLoaded)).toBe(true);
+      expect(timelineManager.getScrubberDateAtMonthScrollPercent({ year: 2024, month: 1 }, 0.95)).toEqual({
+        year: 2024,
+        month: 1,
+        day: 2,
+      });
+    });
   });
 
   describe('loadMonthGroup', () => {

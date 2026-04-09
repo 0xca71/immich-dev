@@ -248,6 +248,23 @@ export class TimelineManager extends VirtualScrollManager {
     this.#createScrubberMonths();
   }
 
+  async ensureScrubberYearGeometry(year: number) {
+    const months = this.months.filter((month) => month.yearMonth.year === year);
+    if (months.length === 0) {
+      this.#createScrubberMonths();
+      return;
+    }
+
+    await Promise.all(
+      months.map(async (month) => {
+        await this.loadMonthGroup(month.yearMonth, { cancelable: false });
+        this.clearDeferredLayout(month);
+      }),
+    );
+
+    this.#createScrubberMonths();
+  }
+
   getScrubberDateAtMonthScrollPercent(yearMonth: TimelineYearMonth, monthScrollPercent: number): TimelineDate | undefined {
     const month = getMonthGroupByDate(this, yearMonth);
     if (!month?.isLoaded || !month.isHeightActual || month.timelineDays.length === 0) {
@@ -319,7 +336,11 @@ export class TimelineManager extends VirtualScrollManager {
       await this.initTask.reset();
       await this.#init(options);
       this.updateViewportGeometry(false);
-      this.#createScrubberMonths();
+      if (options.displayYear !== undefined) {
+        await this.ensureScrubberYearGeometry(options.displayYear);
+      } else {
+        this.#createScrubberMonths();
+      }
     } finally {
       this.suspendTransitions = false;
     }
