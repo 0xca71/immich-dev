@@ -1,16 +1,22 @@
 <script lang="ts">
   import { TimelineManager } from '$lib/managers/timeline-manager/timeline-manager.svelte';
   import type { ScrubberMonth, ViewportTopMonth } from '$lib/managers/timeline-manager/types';
+  import { locale } from '$lib/stores/preferences.store';
   import { mediaQueryManager } from '$lib/stores/media-query-manager.svelte';
   import { getTabbable } from '$lib/utils/focus-util';
   import { type ScrubberListener } from '$lib/utils/timeline-util';
+  import { AssetOrder } from '@immich/sdk';
   import { Icon } from '@immich/ui';
   import { mdiPlay } from '@mdi/js';
   import { clamp } from 'lodash-es';
+  import { DateTime } from 'luxon';
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { fade, fly } from 'svelte/transition';
 
   interface Props {
+    /** Offset from the top of the container */
+    topOffset?: number;
     /** Offset from the top of the timeline (e.g., for headers) */
     timelineTopOffset?: number;
     /** Offset from the bottom of the timeline (e.g., for footers) */
@@ -39,6 +45,7 @@
   }
 
   let {
+    topOffset = 0,
     timelineTopOffset = 0,
     timelineBottomOffset = 0,
     height = 0,
@@ -59,6 +66,7 @@
   let isHoverOnPaddingTop = $state(false);
   let isHoverOnPaddingBottom = $state(false);
   let hoverY = $state(0);
+  let hoverSegmentScrollPercent = $state(0);
   let clientY = 0;
   let windowHeight = $state(0);
   let scrollBar: HTMLElement | undefined = $state();
@@ -192,14 +200,58 @@
   };
   let activeSegment: HTMLElement | undefined = $state();
   const segments = $derived(calculateSegments(timelineManager.scrubberMonths));
+  const getEstimatedHoverLabel = (segment: Segment | undefined, percent: number) => {
+    if (!segment) {
+      return undefined;
+    }
+
+    const monthDate = DateTime.fromObject(
+      { year: segment.year, month: segment.month },
+      { zone: 'local', locale: get(locale) },
+    );
+    const daysInMonth = monthDate.daysInMonth ?? 31;
+    const clampedPercent = clamp(percent, 0, 0.999_999);
+    const descending = timelineManager.getAssetOrder() !== AssetOrder.Asc;
+    const day = descending
+      ? clamp(daysInMonth - Math.floor(clampedPercent * daysInMonth), 1, daysInMonth)
+      : clamp(Math.floor(clampedPercent * daysInMonth) + 1, 1, daysInMonth);
+
+    return DateTime.fromObject(
+      { year: segment.year, month: segment.month, day },
+      { zone: 'local', locale: get(locale) },
+    ).toLocaleString(
+      {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      },
+      { locale: get(locale) },
+    );
+  };
   const hoverLabel = $derived.by(() => {
     if (isHoverOnPaddingTop) {
-      return segments.at(0)?.dateFormatted;
+      return getEstimatedHoverLabel(segments.at(0), 0);
     }
     if (isHoverOnPaddingBottom) {
-      return segments.at(-1)?.dateFormatted;
+      return getEstimatedHoverLabel(segments.at(-1), 0.999_999);
     }
-    return activeSegment?.dataset.label;
+    if (!activeSegment?.dataset.segmentYearMonth) {
+      return activeSegment?.dataset.label;
+    }
+
+    const [year, month] = activeSegment.dataset.segmentYearMonth.split('-').map(Number);
+    return getEstimatedHoverLabel(
+      {
+        count: 0,
+        dateFormatted: activeSegment.dataset.label ?? '',
+        hasDot: false,
+        hasLabel: false,
+        height: 0,
+        month,
+        year,
+      },
+      hoverSegmentScrollPercent,
+    );
   });
   const segmentDate: ViewportTopMonth = $derived.by(() => {
     if (activeSegment?.dataset.id === 'lead-in') {
@@ -330,6 +382,7 @@
     const x = rect!.left + rect!.width / 2;
     const { segment, monthGroupPercentY, isOnPaddingTop, isOnPaddingBottom } = getActive(x, clientY);
     activeSegment = segment;
+    hoverSegmentScrollPercent = monthGroupPercentY;
     isHoverOnPaddingTop = isOnPaddingTop;
     isHoverOnPaddingBottom = isOnPaddingBottom;
 
@@ -509,6 +562,7 @@
   aria-valuemin={toScrollY(0)}
   data-id="scrubber"
   class="absolute end-0 z-1 select-none hover:cursor-row-resize"
+  style:top={topOffset + 'px'}
   style:padding-top={PADDING_TOP + 'px'}
   style:padding-bottom={PADDING_BOTTOM + 'px'}
   style:width

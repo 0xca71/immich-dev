@@ -6,6 +6,7 @@ export type ViewportTopMonth = TimelineYearMonth | undefined | 'lead-in' | 'lead
 export type AssetApiGetTimeBucketsRequest = Parameters<typeof import('@immich/sdk').getTimeBuckets>[0];
 
 export type TimelineManagerOptions = Omit<AssetApiGetTimeBucketsRequest, 'size'> & {
+  displayYear?: number;
   timelineAlbumId?: string;
   deferInit?: boolean;
   assetFilter?: Set<string>;

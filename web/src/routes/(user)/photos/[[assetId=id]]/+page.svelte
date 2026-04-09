@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { clickOutside } from '$lib/actions/click-outside';
   import ActionMenuItem from '$lib/components/ActionMenuItem.svelte';
   import UserPageLayout from '$lib/components/layouts/user-page-layout.svelte';
   import ButtonContextMenu from '$lib/components/shared-components/context-menu/button-context-menu.svelte';
@@ -37,12 +38,28 @@
   import { getAltText } from '$lib/utils/thumbnail-util';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { AssetVisibility } from '@immich/sdk';
-  import { ActionButton, CommandPaletteDefaultProvider, ImageCarousel } from '@immich/ui';
-  import { mdiDotsVertical } from '@mdi/js';
+  import { ActionButton, CommandPaletteDefaultProvider, Icon, ImageCarousel } from '@immich/ui';
+  import { mdiCheck, mdiDotsVertical } from '@mdi/js';
   import { t } from 'svelte-i18n';
 
   let timelineManager = $state<TimelineManager>() as TimelineManager;
-  const options = { visibility: AssetVisibility.Timeline, withStacked: true, withPartners: true };
+  const allYearsValue = '__all__';
+  const allYearsLabel = '';
+  const allYearsMenuLabel = 'All';
+  let isYearMenuOpen = $state(false);
+  let selectedTimelineYear = $state(allYearsValue);
+  const options = $derived.by(() => ({
+    visibility: AssetVisibility.Timeline,
+    withStacked: true,
+    withPartners: true,
+    displayYear: selectedTimelineYear !== allYearsValue ? Number(selectedTimelineYear) : undefined,
+  }));
+  const yearOptions = $derived.by(() => [
+    { label: allYearsLabel, value: allYearsValue },
+    ...(timelineManager?.availableYears ?? []).map((year) => ({ label: `${year}`, value: `${year}` })),
+  ]);
+  const selectedYearLabel = $derived(selectedTimelineYear === allYearsValue ? allYearsLabel : selectedTimelineYear);
+  const showYearFilter = $derived((timelineManager?.availableYears?.length ?? 0) > 1);
 
   let selectedAssets = $derived(assetMultiSelectManager.assets);
   let isAssetStackSelected = $derived(selectedAssets.length === 1 && !!selectedAssets[0].stack);
@@ -102,6 +119,62 @@
     onEscape={handleEscape}
     withStacked
   >
+    {#snippet scrubberHeader()}
+      {#if showYearFilter}
+        <div class="w-full px-1 pb-2 pt-1 text-right">
+          <div
+            use:clickOutside={{ onOutclick: () => (isYearMenuOpen = false), onEscape: () => (isYearMenuOpen = false) }}
+            class="relative"
+          >
+            <button
+              type="button"
+              class="relative flex h-10 w-full items-center justify-center rounded-[20px] bg-gray-100 text-sm font-medium text-immich-fg ring-1 ring-gray-200 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-immich-dark-fg dark:ring-neutral-900 dark:hover:bg-gray-700"
+              aria-haspopup="listbox"
+              aria-expanded={isYearMenuOpen}
+              aria-label={$t('year')}
+              onclick={() => (isYearMenuOpen = !isYearMenuOpen)}
+            >
+              <span class="min-w-0 truncate tabular-nums">{selectedYearLabel}</span>
+            </button>
+
+            {#if isYearMenuOpen}
+              <div
+                class="absolute end-0 top-full z-10 mt-2 w-full overflow-hidden rounded-[20px] bg-gray-100 py-2 text-sm font-medium shadow-lg ring-1 ring-gray-200 dark:bg-gray-800 dark:text-immich-dark-fg dark:ring-neutral-900"
+                role="listbox"
+                aria-label={$t('year')}
+              >
+                {#each yearOptions as option (option.value)}
+                  <button
+                    type="button"
+                    class={[
+                      'flex h-12 w-full items-center justify-center px-0 tabular-nums transition-colors',
+                      option.value === selectedTimelineYear
+                        ? 'bg-gray-200 text-primary dark:bg-gray-700'
+                        : 'hover:bg-gray-200 dark:hover:bg-gray-700',
+                    ]}
+                    role="option"
+                    aria-selected={option.value === selectedTimelineYear}
+                    onclick={() => {
+                      selectedTimelineYear = option.value;
+                      isYearMenuOpen = false;
+                    }}
+                  >
+                    {#if option.value === allYearsValue}
+                      <span class="sr-only">{allYearsMenuLabel}</span>
+                      {#if option.value === selectedTimelineYear}
+                        <Icon icon={mdiCheck} size="18" />
+                      {/if}
+                    {:else}
+                      <span>{option.label}</span>
+                    {/if}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+    {/snippet}
     {#if $preferences.memories.enabled}
       <ImageCarousel {items} />
     {/if}

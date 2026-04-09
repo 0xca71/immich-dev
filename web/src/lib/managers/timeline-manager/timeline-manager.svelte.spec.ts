@@ -93,6 +93,24 @@ describe('TimelineManager', () => {
     it('calculates timeline height', () => {
       expect(timelineManager.totalViewerHeight).toBe(8337);
     });
+
+    it('tracks available years and filters months by display year', async () => {
+      sdkMock.getTimeBuckets.mockResolvedValue([
+        { count: 1, timeBucket: '2025-03-01' },
+        { count: 100, timeBucket: '2024-02-01' },
+        { count: 3, timeBucket: '2023-01-01' },
+      ]);
+
+      await timelineManager.updateOptions({ displayYear: 2024 });
+
+      expect(timelineManager.availableYears).toEqual([2025, 2024, 2023]);
+      expect(
+        timelineManager.months.map((month) => ({
+          year: month.yearMonth.year,
+          month: month.yearMonth.month,
+        })),
+      ).toEqual([{ year: 2024, month: 2 }]);
+    });
   });
 
   describe('loadMonthGroup', () => {

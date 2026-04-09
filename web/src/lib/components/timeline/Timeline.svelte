@@ -46,6 +46,7 @@
     person?: PersonResponseDto;
     onSelect?: (asset: TimelineAsset) => void;
     onEscape?: () => void;
+    scrubberHeader?: Snippet;
     children?: Snippet;
     empty?: Snippet;
     customThumbnailLayout?: Snippet<[TimelineAsset]>;
@@ -78,6 +79,7 @@
     person,
     onSelect = () => {},
     onEscape = () => {},
+    scrubberHeader,
     children,
     empty,
     customThumbnailLayout,
@@ -99,10 +101,14 @@
   // Overall scroll percentage through the entire timeline (0-1)
   let timelineScrollPercent: number = $state(0);
   let scrubberWidth = $state(0);
+  let scrubberHeaderHeight = $state(0);
 
   const isEmpty = $derived(timelineManager.isInitialized && timelineManager.months.length === 0);
   const maxMd = $derived(mediaQueryManager.maxMd);
   const usingMobileDevice = $derived(mediaQueryManager.pointerCoarse);
+  const scrubberColumnWidth = $derived(
+    usingMobileDevice ? scrubberWidth : scrubberHeader ? Math.max(scrubberWidth, 50) : scrubberWidth,
+  );
 
   $effect(() => {
     const layoutOptions = maxMd
@@ -584,9 +590,19 @@
 />
 
 {#if timelineManager.months.length > 0}
+  {#if !usingMobileDevice}
+    <div
+      class="absolute end-0 top-0 z-2"
+      style:width={scrubberColumnWidth + 'px'}
+      bind:clientHeight={scrubberHeaderHeight}
+    >
+      {@render scrubberHeader?.()}
+    </div>
+  {/if}
   <Scrubber
     {timelineManager}
-    height={timelineManager.viewportHeight}
+    height={Math.max(0, timelineManager.viewportHeight - scrubberHeaderHeight)}
+    topOffset={scrubberHeaderHeight}
     timelineTopOffset={timelineManager.topSectionHeight}
     timelineBottomOffset={timelineManager.bottomSectionHeight}
     {timelineScrollPercent}
@@ -616,7 +632,7 @@
 <section
   id="asset-grid"
   class={['scrollbar-hidden h-full overflow-y-auto outline-none', { 'm-0': isEmpty }, { 'ms-0': !isEmpty }]}
-  style:margin-inline-end={(usingMobileDevice ? 0 : scrubberWidth) + 'px'}
+  style:margin-inline-end={(usingMobileDevice ? 0 : scrubberColumnWidth) + 'px'}
   tabindex="-1"
   bind:clientHeight={timelineManager.viewportHeight}
   bind:clientWidth={timelineManager.viewportWidth}
