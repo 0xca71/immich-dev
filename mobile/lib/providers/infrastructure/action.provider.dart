@@ -3,29 +3,29 @@ import 'dart:async';
 import 'package:auto_route/auto_route.dart';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/material.dart';
+import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:immich_mobile/constants/enums.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
+import 'package:immich_mobile/domain/models/asset_edit.model.dart';
 import 'package:immich_mobile/domain/services/asset.service.dart';
 import 'package:immich_mobile/models/download/livephotos_medatada.model.dart';
 import 'package:immich_mobile/providers/asset_viewer/asset_viewer.provider.dart';
+import 'package:immich_mobile/providers/backup/asset_upload_progress.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/asset.provider.dart';
 import 'package:immich_mobile/providers/infrastructure/asset_viewer/asset.provider.dart' show assetExifProvider;
+import 'package:immich_mobile/providers/infrastructure/tag.provider.dart';
 import 'package:immich_mobile/providers/timeline/multiselect.provider.dart';
 import 'package:immich_mobile/providers/user.provider.dart';
+import 'package:immich_mobile/providers/websocket.provider.dart';
 import 'package:immich_mobile/routing/router.dart';
-import 'package:immich_mobile/providers/backup/asset_upload_progress.provider.dart';
 import 'package:immich_mobile/services/action.service.dart';
 import 'package:immich_mobile/services/download.service.dart';
-import 'package:immich_mobile/services/timeline.service.dart';
 import 'package:immich_mobile/services/foreground_upload.service.dart';
 import 'package:immich_mobile/widgets/asset_grid/delete_dialog.dart';
 import 'package:logging/logging.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:openapi/api.dart';
 
-final actionProvider = NotifierProvider<ActionNotifier, void>(
-  ActionNotifier.new,
-  dependencies: [multiSelectProvider, timelineServiceProvider],
-);
+final actionProvider = NotifierProvider<ActionNotifier, void>(ActionNotifier.new, dependencies: [multiSelectProvider]);
 
 class ActionResult {
   final int count;
@@ -240,6 +240,26 @@ class ActionNotifier extends Notifier<void> {
     }
   }
 
+  Future<ActionResult> emptyTrash(String userId) async {
+    try {
+      final count = await _service.emptyTrash(userId);
+      return ActionResult(count: count, success: true);
+    } catch (error, stack) {
+      _logger.severe('Failed to empty trash', error, stack);
+      return ActionResult(count: 0, success: false, error: error.toString());
+    }
+  }
+
+  Future<ActionResult> restoreAllTrash(String userId) async {
+    try {
+      final count = await _service.restoreAllTrash(userId);
+      return ActionResult(count: count, success: true);
+    } catch (error, stack) {
+      _logger.severe('Failed to restore all trash assets', error, stack);
+      return ActionResult(count: 0, success: false, error: error.toString());
+    }
+  }
+
   Future<ActionResult> trashRemoteAndDeleteLocal(ActionSource source) async {
     final ids = _getOwnedRemoteIdsForSource(source);
     final localIds = _getLocalIdsForSource(source);
@@ -330,6 +350,23 @@ class ActionNotifier extends Notifier<void> {
       return ActionResult(count: ids.length, success: true);
     } catch (error, stack) {
       _logger.severe('Failed to edit date and time for assets', error, stack);
+      return ActionResult(count: ids.length, success: false, error: error.toString());
+    }
+  }
+
+  Future<ActionResult?> tagAssets(ActionSource source, BuildContext context) async {
+    final ids = _getOwnedRemoteIdsForSource(source);
+    try {
+      final count = await _service.tagAssets(ids, context);
+      if (count == null) {
+        return null;
+      }
+
+      ref.invalidate(tagProvider);
+      return ActionResult(count: count, success: true);
+    } catch (error, stack) {
+      _logger.severe('Failed to tag assets', error, stack);
+      ref.invalidate(tagProvider);
       return ActionResult(count: ids.length, success: false, error: error.toString());
     }
   }
@@ -490,13 +527,38 @@ class ActionNotifier extends Notifier<void> {
       });
     }
   }
+
+  Future<ActionResult> applyEdits(ActionSource source, List<AssetEdit> edits) async {
+    final ids = _getOwnedRemoteIdsForSource(source);
+
+    if (ids.length != 1) {
+      _logger.warning('applyEdits called with multiple assets, expected single asset');
+      return ActionResult(count: ids.length, success: false, error: 'Expected single asset for applying edits');
+    }
+
+    final completer = ref.read(websocketProvider.notifier).waitForEvent("AssetEditReadyV1", (dynamic data) {
+      final eventAsset = SyncAssetV1.fromJson(data["asset"]);
+      return eventAsset?.id == ids.first;
+    }, const Duration(seconds: 10));
+
+    try {
+      await _service.applyEdits(ids.first, edits);
+      await completer;
+      return const ActionResult(count: 1, success: true);
+    } catch (error, stack) {
+      _logger.severe('Failed to apply edits to assets', error, stack);
+      return ActionResult(count: ids.length, success: false, error: error.toString());
+    }
+  }
 }
 
 extension on Iterable<RemoteAsset> {
   Iterable<String> toIds() => map((e) => e.id);
 
   Iterable<RemoteAsset> ownedAssets(String? ownerId) {
-    if (ownerId == null) return const [];
+    if (ownerId == null) {
+      return const [];
+    }
     return whereType<RemoteAsset>().where((a) => a.ownerId == ownerId);
   }
 }

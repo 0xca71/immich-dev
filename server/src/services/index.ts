@@ -4,7 +4,6 @@ import { ApiKeyService } from 'src/services/api-key.service';
 import { ApiService } from 'src/services/api.service';
 import { AssetMediaService } from 'src/services/asset-media.service';
 import { AssetService } from 'src/services/asset.service';
-import { AuditService } from 'src/services/audit.service';
 import { AuthAdminService } from 'src/services/auth-admin.service';
 import { AuthService } from 'src/services/auth.service';
 import { CliService } from 'src/services/cli.service';
@@ -45,6 +44,7 @@ import { UserAdminService } from 'src/services/user-admin.service';
 import { UserService } from 'src/services/user.service';
 import { VersionService } from 'src/services/version.service';
 import { ViewService } from 'src/services/view.service';
+import { WorkflowExecutionService } from 'src/services/workflow-execution.service';
 import { WorkflowService } from 'src/services/workflow.service';
 
 export const services = [
@@ -54,7 +54,6 @@ export const services = [
   ApiService,
   AssetMediaService,
   AssetService,
-  AuditService,
   AuthService,
   AuthAdminService,
   CliService,
@@ -95,5 +94,6 @@ export const services = [
   UserService,
   VersionService,
   ViewService,
+  WorkflowExecutionService,
   WorkflowService,
 ];

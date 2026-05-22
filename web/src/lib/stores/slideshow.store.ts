@@ -19,6 +19,11 @@ export enum SlideshowLook {
   BlurredBackground = 'blurred-background',
 }
 
+export enum SlideshowMetadataOverlayMode {
+  DescriptionOnly = 'description-only',
+  Full = 'full',
+}
+
 export const slideshowLookCssMapping: Record<SlideshowLook, string> = {
   [SlideshowLook.Contain]: 'object-contain',
   [SlideshowLook.Cover]: 'object-cover',
@@ -43,6 +48,11 @@ function createSlideshowStore() {
   const slideshowRepeat = persisted<boolean>('slideshow-repeat', false);
   const slideshowSkipVideos = persisted<boolean>('slideshow-skip-videos', false);
   const slideshowSkipMotionPhotos = persisted<boolean>('slideshow-skip-motion-photos', false);
+  const slideshowShowMetadataOverlay = persisted<boolean>('slideshow-show-metadata-overlay', false);
+  const slideshowMetadataOverlayMode = persisted<SlideshowMetadataOverlayMode>(
+    'slideshow-metadata-overlay-mode',
+    SlideshowMetadataOverlayMode.Full,
+  );
 
   return {
     restartProgress: {
@@ -77,6 +87,8 @@ function createSlideshowStore() {
     slideshowRepeat,
     slideshowSkipVideos,
     slideshowSkipMotionPhotos,
+    slideshowShowMetadataOverlay,
+    slideshowMetadataOverlayMode,
   };
 }
 

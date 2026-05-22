@@ -10,8 +10,14 @@
     mdiShuffle,
   } from '@mdi/js';
   import { t } from 'svelte-i18n';
-  import SettingDropdown from '../components/shared-components/settings/setting-dropdown.svelte';
-  import { SlideshowLook, SlideshowNavigation, SlideshowState, slideshowStore } from '../stores/slideshow.store';
+  import SettingDropdown from '../components/shared-components/settings/SettingDropdown.svelte';
+  import {
+    SlideshowLook,
+    SlideshowMetadataOverlayMode,
+    SlideshowNavigation,
+    SlideshowState,
+    slideshowStore,
+  } from '../stores/slideshow.store';
 
   const {
     slideshowDelay,
@@ -24,6 +30,8 @@
     slideshowSkipVideos,
     slideshowSkipMotionPhotos,
     slideshowState,
+    slideshowShowMetadataOverlay,
+    slideshowMetadataOverlayMode,
   } = slideshowStore;
 
   type Props = {
@@ -42,6 +50,8 @@
   let tempSlideshowRepeat = $state($slideshowRepeat);
   let tempSlideshowSkipVideos = $state($slideshowSkipVideos);
   let tempSlideshowSkipMotionPhotos = $state($slideshowSkipMotionPhotos);
+  let tempSlideshowShowMetadataOverlay = $state($slideshowShowMetadataOverlay);
+  let tempSlideshowMetadataOverlayMode = $state($slideshowMetadataOverlayMode);
 
   const navigationOptions: Record<SlideshowNavigation, RenderedOption> = {
     [SlideshowNavigation.Shuffle]: { icon: mdiShuffle, title: $t('shuffle') },
@@ -55,7 +65,16 @@
     [SlideshowLook.BlurredBackground]: { icon: mdiPanorama, title: $t('blurred_background') },
   };
 
-  const handleToggle = <Type extends SlideshowNavigation | SlideshowLook>(
+  const metadataOverlayModeOptions: Record<SlideshowMetadataOverlayMode, RenderedOption> = {
+    [SlideshowMetadataOverlayMode.DescriptionOnly]: {
+      title: $t('slideshow_metadata_overlay_mode_description_only'),
+    },
+    [SlideshowMetadataOverlayMode.Full]: {
+      title: $t('slideshow_metadata_overlay_mode_full'),
+    },
+  };
+
+  const handleToggle = <Type extends SlideshowNavigation | SlideshowLook | SlideshowMetadataOverlayMode>(
     record: RenderedOption,
     options: Record<Type, RenderedOption>,
   ): undefined | Type => {
@@ -77,6 +96,8 @@
     $slideshowSkipVideos = tempSlideshowSkipVideos;
     $slideshowSkipMotionPhotos = tempSlideshowSkipMotionPhotos;
     $slideshowState = SlideshowState.PlaySlideshow;
+    $slideshowShowMetadataOverlay = tempSlideshowShowMetadataOverlay;
+    $slideshowMetadataOverlayMode = tempSlideshowMetadataOverlayMode;
     onClose();
   };
 </script>
@@ -124,6 +145,21 @@
     <Field label={$t('skip_motion_photos_in_slideshow')}>
       <Switch bind:checked={tempSlideshowSkipMotionPhotos} />
     </Field>
+
+    <Field label={$t('show_slideshow_metadata_overlay')}>
+      <Switch bind:checked={tempSlideshowShowMetadataOverlay} />
+    </Field>
+
+    <SettingDropdown
+      title={$t('slideshow_metadata_overlay_mode')}
+      options={Object.values(metadataOverlayModeOptions)}
+      selectedOption={metadataOverlayModeOptions[tempSlideshowMetadataOverlayMode]}
+      disabled={!tempSlideshowShowMetadataOverlay}
+      onToggle={(option) => {
+        tempSlideshowMetadataOverlayMode =
+          handleToggle(option, metadataOverlayModeOptions) || tempSlideshowMetadataOverlayMode;
+      }}
+    />
 
     <Field label={$t('duration')}>
       <NumberInput min={1} bind:value={tempSlideshowDelay} />

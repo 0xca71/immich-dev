@@ -17,8 +17,9 @@ import { InjectKysely } from 'nestjs-kysely';
 import { LockableProperty, Stack } from 'src/database';
 import { Chunked, ChunkedArray, DummyValue, GenerateSql } from 'src/decorators';
 import { AuthDto } from 'src/dtos/auth.dto';
-import { AssetFileType, AssetOrder, AssetStatus, AssetType, AssetVisibility } from 'src/enum';
+import { AssetFileType, AssetOrder, AssetOrderBy, AssetStatus, AssetType, AssetVisibility } from 'src/enum';
 import { DB } from 'src/schema';
+import { AssetAudioTable, AssetKeyframeTable, AssetVideoTable } from 'src/schema/tables/asset-av.table';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
 import { AssetFileTable } from 'src/schema/tables/asset-file.table';
 import { AssetJobStatusTable } from 'src/schema/tables/asset-job-status.table';
@@ -88,6 +89,7 @@ interface AssetBuilderOptions {
 
 export interface TimeBucketOptions extends AssetBuilderOptions {
   order?: AssetOrder;
+  orderBy?: AssetOrderBy;
 }
 
 export interface TimeBucketItem {
@@ -104,19 +106,6 @@ export interface YearMonthDay {
 interface AssetExploreFieldOptions {
   maxFields: number;
   minAssetsPerField: number;
-}
-
-interface AssetFullSyncOptions {
-  ownerId: string;
-  lastId?: string;
-  updatedUntil: Date;
-  limit: number;
-}
-
-interface AssetDeltaSyncOptions {
-  userIds: string[];
-  updatedAfter: Date;
-  limit: number;
 }
 
 interface AssetGetByChecksumOptions {
@@ -136,6 +125,14 @@ interface GetByIdsRelations {
   tags?: boolean;
   edits?: boolean;
 }
+
+type UpsertExifOptions = {
+  exif: Insertable<AssetExifTable>;
+  audio?: Insertable<AssetAudioTable>;
+  video?: Insertable<AssetVideoTable>;
+  keyframes?: Insertable<AssetKeyframeTable>;
+  lockedPropertiesBehavior: 'override' | 'append' | 'skip';
+};
 
 const distinctLocked = <T extends LockableProperty[] | null>(eb: ExpressionBuilder<DB, 'asset_exif'>, columns: T) =>
   sql<T>`nullif(array(select distinct unnest(${eb.ref('asset_exif.lockedProperties')} || ${columns})), '{}')`;
@@ -174,15 +171,76 @@ export class AssetRepository {
 
   @GenerateSql({
     params: [
-      { dateTimeOriginal: DummyValue.DATE, lockedProperties: ['dateTimeOriginal'] },
-      { lockedPropertiesBehavior: 'append' },
+      {
+        exif: { dateTimeOriginal: DummyValue.DATE, lockedProperties: ['dateTimeOriginal'] },
+        lockedPropertiesBehavior: 'append',
+      },
     ],
   })
-  async upsertExif(
-    exif: Insertable<AssetExifTable>,
-    { lockedPropertiesBehavior }: { lockedPropertiesBehavior: 'override' | 'append' | 'skip' },
-  ): Promise<void> {
-    await this.db
+  async upsertExif({ exif, audio, video, keyframes, lockedPropertiesBehavior }: UpsertExifOptions): Promise<void> {
+    let query = this.db;
+    if (audio) {
+      (query as any) = this.db.with('audio', (qb) =>
+        qb
+          .insertInto('asset_audio')
+          .values(audio)
+          .onConflict((oc) =>
+            oc.column('assetId').doUpdateSet(({ ref }) => ({
+              bitrate: ref('asset_audio.bitrate'),
+              index: ref('asset_audio.index'),
+              profile: ref('asset_audio.profile'),
+              codecName: ref('asset_audio.codecName'),
+            })),
+          ),
+      );
+    }
+
+    if (video) {
+      (query as any) = query.with('video', (qb) =>
+        qb
+          .insertInto('asset_video')
+          .values(video)
+          .onConflict((oc) =>
+            oc.column('assetId').doUpdateSet(({ ref }) => ({
+              bitrate: ref('asset_video.bitrate'),
+              timeBase: ref('asset_video.timeBase'),
+              index: ref('asset_video.index'),
+              profile: ref('asset_video.profile'),
+              level: ref('asset_video.level'),
+              colorPrimaries: ref('asset_video.colorPrimaries'),
+              colorTransfer: ref('asset_video.colorTransfer'),
+              colorMatrix: ref('asset_video.colorMatrix'),
+              dvProfile: ref('asset_video.dvProfile'),
+              dvLevel: ref('asset_video.dvLevel'),
+              dvBlSignalCompatibilityId: ref('asset_video.dvBlSignalCompatibilityId'),
+              codecName: ref('asset_video.codecName'),
+              formatName: ref('asset_video.formatName'),
+              formatLongName: ref('asset_video.formatLongName'),
+              pixelFormat: ref('asset_video.pixelFormat'),
+            })),
+          ),
+      );
+    }
+
+    if (keyframes) {
+      (query as any) = query.with('keyframe', (qb) =>
+        qb
+          .insertInto('asset_keyframe')
+          .values(keyframes)
+          .onConflict((oc) =>
+            oc.column('assetId').doUpdateSet(({ ref }) => ({
+              pts: ref('asset_keyframe.pts'),
+              accDuration: ref('asset_keyframe.accDuration'),
+              ownDuration: ref('asset_keyframe.ownDuration'),
+              totalDuration: ref('asset_keyframe.totalDuration'),
+              packetCount: ref('asset_keyframe.packetCount'),
+              outputFrames: ref('asset_keyframe.outputFrames'),
+            })),
+          ),
+      );
+    }
+
+    await query
       .insertInto('asset_exif')
       .values(exif)
       .onConflict((oc) =>
@@ -318,7 +376,7 @@ export class AssetRepository {
       .execute();
   }
 
-  upsertMetadata(id: string, items: Array<{ key: string; value: object }>) {
+  upsertMetadata(id: string, items: Array<{ key: string; value: Record<string, unknown> }>) {
     if (items.length === 0) {
       return [];
     }
@@ -380,8 +438,10 @@ export class AssetRepository {
     return this.db.insertInto('asset').values(asset).returningAll().executeTakeFirstOrThrow();
   }
 
-  createAll(assets: Insertable<AssetTable>[]) {
-    return this.db.insertInto('asset').values(assets).returningAll().execute();
+  @ChunkedArray({ chunkSize: 4000 })
+  async createAll(assets: Insertable<AssetTable>[]) {
+    const ids = await this.db.insertInto('asset').values(assets).returning('id').execute();
+    return ids.map(({ id }) => id);
   }
 
   @GenerateSql({ params: [DummyValue.UUID, { year: 2000, day: 1, month: 1 }] })
@@ -459,18 +519,6 @@ export class AssetRepository {
     await this.db.deleteFrom('asset').where('ownerId', '=', ownerId).execute();
   }
 
-  async getByDeviceIds(ownerId: string, deviceId: string, deviceAssetIds: string[]): Promise<string[]> {
-    const assets = await this.db
-      .selectFrom('asset')
-      .select(['deviceAssetId'])
-      .where('deviceAssetId', 'in', deviceAssetIds)
-      .where('deviceId', '=', deviceId)
-      .where('ownerId', '=', asUuid(ownerId))
-      .execute();
-
-    return assets.map((asset) => asset.deviceAssetId);
-  }
-
   @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
   getByLibraryIdAndOriginalPath(libraryId: string, originalPath: string) {
     return this.db
@@ -480,27 +528,6 @@ export class AssetRepository {
       .where('originalPath', '=', originalPath)
       .limit(1)
       .executeTakeFirst();
-  }
-
-  /**
-   * Get assets by device's Id on the database
-   * @param ownerId
-   * @param deviceId
-   *
-   * @returns Promise<string[]> - Array of assetIds belong to the device
-   */
-  @GenerateSql({ params: [DummyValue.UUID, DummyValue.STRING] })
-  async getAllByDeviceId(ownerId: string, deviceId: string): Promise<string[]> {
-    const items = await this.db
-      .selectFrom('asset')
-      .select(['deviceAssetId'])
-      .where('ownerId', '=', asUuid(ownerId))
-      .where('deviceId', '=', deviceId)
-      .where('visibility', '!=', AssetVisibility.Hidden)
-      .where('deletedAt', 'is', null)
-      .execute();
-
-    return items.map((asset) => asset.deviceAssetId);
   }
 
   @GenerateSql({ params: [DummyValue.UUID] })
@@ -579,7 +606,7 @@ export class AssetRepository {
       .executeTakeFirst();
   }
 
-  @GenerateSql({ params: [[DummyValue.UUID], { deviceId: DummyValue.STRING }] })
+  @GenerateSql({ params: [[DummyValue.UUID], {}] })
   @Chunked()
   async updateAll(ids: string[], options: Updateable<AssetTable>): Promise<void> {
     if (ids.length === 0) {
@@ -679,26 +706,13 @@ export class AssetRepository {
       .executeTakeFirstOrThrow();
   }
 
-  getRandom(userIds: string[], take: number) {
-    return this.db
-      .selectFrom('asset')
-      .selectAll('asset')
-      .$call(withExif)
-      .$call(withDefaultVisibility)
-      .where('ownerId', '=', anyUuid(userIds))
-      .where('deletedAt', 'is', null)
-      .orderBy((eb) => eb.fn('random'))
-      .limit(take)
-      .execute();
-  }
-
   @GenerateSql({ params: [{}] })
   async getTimeBuckets(options: TimeBucketOptions): Promise<TimeBucketItem[]> {
     return this.db
       .with('asset', (qb) =>
         qb
           .selectFrom('asset')
-          .select(truncatedDate<Date>().as('timeBucket'))
+          .select(truncatedDate<Date>(options.orderBy).as('timeBucket'))
           .$if(!!options.isTrashed, (qb) => qb.where('asset.status', '!=', AssetStatus.Deleted))
           .where('asset.deletedAt', options.isTrashed ? 'is not' : 'is', null)
           .$if(!!options.bbox, (qb) => {
@@ -770,6 +784,7 @@ export class AssetRepository {
             'asset.ownerId',
             'asset.status',
             sql`asset."fileCreatedAt" at time zone 'utc'`.as('fileCreatedAt'),
+            sql`asset."createdAt" at time zone 'utc'`.as('createdAt'),
             eb.fn('encode', ['asset.thumbhash', sql.lit('base64')]).as('thumbhash'),
             'asset_exif.city',
             'asset_exif.country',
@@ -802,7 +817,7 @@ export class AssetRepository {
 
             return withBoundingBox(withBoundingCircle, bbox);
           })
-          .where(truncatedDate(), '=', timeBucket.replace(/^[+-]/, ''))
+          .where(truncatedDate(options.orderBy), '=', timeBucket.replace(/^[+-]/, ''))
           .$if(!!options.albumId, (qb) =>
             qb.where((eb) =>
               eb.exists(
@@ -848,7 +863,12 @@ export class AssetRepository {
           )
           .$if(!!options.isTrashed, (qb) => qb.where('asset.status', '!=', AssetStatus.Deleted))
           .$if(!!options.tagId, (qb) => withTagId(qb, options.tagId!))
-          .orderBy(sql`(asset."localDateTime" AT TIME ZONE 'UTC')::date`, order)
+          .orderBy(
+            options.orderBy == AssetOrderBy.CreatedAt
+              ? sql`"createdAt"`
+              : sql`(asset."localDateTime" AT TIME ZONE 'UTC')::date`,
+            order,
+          )
           .orderBy('asset.fileCreatedAt', order),
       )
       .with('agg', (qb) =>
@@ -867,6 +887,7 @@ export class AssetRepository {
             eb.fn.coalesce(eb.fn('array_agg', ['livePhotoVideoId']), sql.lit('{}')).as('livePhotoVideoId'),
             eb.fn.coalesce(eb.fn('array_agg', ['fileCreatedAt']), sql.lit('{}')).as('fileCreatedAt'),
             eb.fn.coalesce(eb.fn('array_agg', ['localOffsetHours']), sql.lit('{}')).as('localOffsetHours'),
+            eb.fn.coalesce(eb.fn('array_agg', ['createdAt']), sql.lit('{}')).as('createdAt'),
             eb.fn.coalesce(eb.fn('array_agg', ['ownerId']), sql.lit('{}')).as('ownerId'),
             eb.fn.coalesce(eb.fn('array_agg', ['projectionType']), sql.lit('{}')).as('projectionType'),
             eb.fn.coalesce(eb.fn('array_agg', ['ratio']), sql.lit('{}')).as('ratio'),
@@ -916,68 +937,20 @@ export class AssetRepository {
     return { fieldName: 'exifInfo.city', items };
   }
 
-  @GenerateSql({
-    params: [
-      {
-        ownerId: DummyValue.UUID,
-        lastId: DummyValue.UUID,
-        updatedUntil: DummyValue.DATE,
-        limit: 10,
-      },
-    ],
-  })
-  getAllForUserFullSync(options: AssetFullSyncOptions) {
-    const { ownerId, lastId, updatedUntil, limit } = options;
-    return this.db
+  @GenerateSql({ params: [DummyValue.UUID, 12] })
+  async getRecentlyCreatedAssetIds(ownerId: string, maxAssets: number) {
+    const items = await this.db
       .selectFrom('asset')
-      .selectAll('asset')
-      .$call(withExif)
-      .leftJoin('stack', 'stack.id', 'asset.stackId')
-      .leftJoinLateral(
-        (eb) =>
-          eb
-            .selectFrom('asset as stacked')
-            .selectAll('stack')
-            .select((eb) => eb.fn.count(eb.table('stacked')).as('assetCount'))
-            .whereRef('stacked.stackId', '=', 'stack.id')
-            .groupBy('stack.id')
-            .as('stacked_assets'),
-        (join) => join.on('stack.id', 'is not', null),
-      )
-      .select((eb) => eb.fn.toJson(eb.table('stacked_assets')).$castTo<Stack | null>().as('stack'))
-      .where('asset.ownerId', '=', asUuid(ownerId))
-      .where('asset.visibility', '!=', AssetVisibility.Hidden)
-      .where('asset.updatedAt', '<=', updatedUntil)
-      .$if(!!lastId, (qb) => qb.where('asset.id', '>', lastId!))
-      .orderBy('asset.id')
-      .limit(limit)
+      .select(['id as data', 'createdAt as value'])
+      .where('ownerId', '=', asUuid(ownerId))
+      .where('asset.visibility', '=', AssetVisibility.Timeline)
+      .where('type', '=', AssetType.Image)
+      .where('deletedAt', 'is', null)
+      .orderBy('value', 'desc')
+      .limit(maxAssets)
       .execute();
-  }
 
-  @GenerateSql({ params: [{ userIds: [DummyValue.UUID], updatedAfter: DummyValue.DATE, limit: 100 }] })
-  async getChangedDeltaSync(options: AssetDeltaSyncOptions) {
-    return this.db
-      .selectFrom('asset')
-      .selectAll('asset')
-      .$call(withExif)
-      .leftJoin('stack', 'stack.id', 'asset.stackId')
-      .leftJoinLateral(
-        (eb) =>
-          eb
-            .selectFrom('asset as stacked')
-            .selectAll('stack')
-            .select((eb) => eb.fn.count(eb.table('stacked')).as('assetCount'))
-            .whereRef('stacked.stackId', '=', 'stack.id')
-            .groupBy('stack.id')
-            .as('stacked_assets'),
-        (join) => join.on('stack.id', 'is not', null),
-      )
-      .select((eb) => eb.fn.toJson(eb.table('stacked_assets').$castTo<Stack | null>()).as('stack'))
-      .where('asset.ownerId', '=', anyUuid(options.userIds))
-      .where('asset.visibility', '!=', AssetVisibility.Hidden)
-      .where('asset.updatedAt', '>', options.updatedAfter)
-      .limit(options.limit)
-      .execute();
+    return { fieldName: 'createdAt', items };
   }
 
   async upsertFile(

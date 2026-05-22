@@ -2,7 +2,7 @@
   import AssetLayout from '$lib/components/timeline/AssetLayout.svelte';
   import type { AssetMultiSelectManager } from '$lib/managers/asset-multi-select-manager.svelte';
   import { TimelineDay } from '$lib/managers/timeline-manager/timeline-day.svelte';
-  import type { MonthGroup } from '$lib/managers/timeline-manager/month-group.svelte';
+  import type { TimelineMonth } from '$lib/managers/timeline-manager/timeline-month.svelte';
   import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { assetsSnapshot, filterIsInOrNearViewport } from '$lib/managers/timeline-manager/utils.svelte';
   import type { VirtualScrollManager } from '$lib/managers/VirtualScrollManager/VirtualScrollManager.svelte';
@@ -27,7 +27,7 @@
     customThumbnailLayout?: Snippet<[TimelineAsset]>;
     singleSelect: boolean;
     assetInteraction: AssetMultiSelectManager;
-    monthGroup: MonthGroup;
+    timelineMonth: TimelineMonth;
     manager: VirtualScrollManager;
     onTimelineDaySelect: (timelineDay: TimelineDay, assets: TimelineAsset[]) => void;
   };
@@ -36,7 +36,7 @@
     customThumbnailLayout,
     singleSelect,
     assetInteraction,
-    monthGroup,
+    timelineMonth,
     manager,
     onTimelineDaySelect,
   }: Props = $props();
@@ -44,10 +44,10 @@
   let { isUploading } = uploadAssetsStore;
   let hoveredTimelineDay = $state<string | null>(null);
 
-  const transitionDuration = $derived(monthGroup.timelineManager.suspendTransitions && !$isUploading ? 0 : 150);
+  const transitionDuration = $derived(timelineMonth.timelineManager.suspendTransitions && !$isUploading ? 0 : 150);
 
   const getTimelineDayFullDate = (timelineDay: TimelineDay): string => {
-    const { month, year } = timelineDay.monthGroup.yearMonth;
+    const { month, year } = timelineDay.timelineMonth.yearMonth;
     const date = fromTimelinePlainDate({
       year,
       month,
@@ -57,13 +57,13 @@
   };
 </script>
 
-{#each filterIsInOrNearViewport(monthGroup.timelineDays) as timelineDay, groupIndex (timelineDay.day)}
+{#each filterIsInOrNearViewport(timelineMonth.timelineDays) as timelineDay, groupIndex (timelineDay.day)}
   {@const isTimelineDaySelected = assetInteraction.selectedGroup.has(timelineDay.groupTitle)}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <section
     class={[
-      { 'transition-all': !monthGroup.timelineManager.suspendTransitions },
-      !monthGroup.timelineManager.suspendTransitions && `delay-${transitionDuration}`,
+      { 'transition-all': !timelineMonth.timelineManager.suspendTransitions },
+      !timelineMonth.timelineManager.suspendTransitions && `delay-${transitionDuration}`,
     ]}
     data-group
     style:position="absolute"
@@ -74,12 +74,12 @@
   >
     <!-- Day title -->
     <div
-      class="flex pt-7 pb-5 max-md:pt-5 max-md:pb-3 h-6 place-items-center text-xs font-medium text-immich-fg dark:text-immich-dark-fg md:text-sm"
+      class="flex h-6 place-items-center pt-7 pb-5 text-xs font-medium text-immich-fg max-md:pt-5 max-md:pb-3 md:text-sm dark:text-immich-dark-fg"
       style:width={timelineDay.width + 'px'}
     >
       {#if !singleSelect}
         <div
-          class="hover:cursor-pointer transition-all duration-200 ease-out overflow-hidden w-0"
+          class="w-0 overflow-hidden transition-all duration-200 ease-out hover:cursor-pointer"
           class:w-8={hoveredTimelineDay === timelineDay.groupTitle ||
             assetInteraction.selectedGroup.has(timelineDay.groupTitle)}
           onclick={() => onTimelineDaySelect(timelineDay, assetsSnapshot(timelineDay.getAssets()))}

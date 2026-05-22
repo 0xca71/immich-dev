@@ -242,17 +242,6 @@ where
 limit
   $3
 
--- AssetRepository.getAllByDeviceId
-select
-  "deviceAssetId"
-from
-  "asset"
-where
-  "ownerId" = $1::uuid
-  and "deviceId" = $2
-  and "visibility" != $3
-  and "deletedAt" is null
-
 -- AssetRepository.getLivePhotoCount
 select
   count(*) as "count"
@@ -312,9 +301,8 @@ limit
 -- AssetRepository.updateAll
 update "asset"
 set
-  "deviceId" = $1
 where
-  "id" = any ($2::uuid[])
+  "id" = any ($1::uuid[])
 
 -- AssetRepository.getByChecksum
 select
@@ -394,6 +382,7 @@ with
       "asset"."ownerId",
       "asset"."status",
       asset."fileCreatedAt" at time zone 'utc' as "fileCreatedAt",
+      asset."createdAt" at time zone 'utc' as "createdAt",
       encode("asset"."thumbhash", 'base64') as "thumbhash",
       "asset_exif"."city",
       "asset_exif"."country",
@@ -454,6 +443,7 @@ with
       coalesce(array_agg("livePhotoVideoId"), '{}') as "livePhotoVideoId",
       coalesce(array_agg("fileCreatedAt"), '{}') as "fileCreatedAt",
       coalesce(array_agg("localOffsetHours"), '{}') as "localOffsetHours",
+      coalesce(array_agg("createdAt"), '{}') as "createdAt",
       coalesce(array_agg("ownerId"), '{}') as "ownerId",
       coalesce(array_agg("projectionType"), '{}') as "projectionType",
       coalesce(array_agg("ratio"), '{}') as "ratio",
@@ -497,60 +487,19 @@ where
 limit
   $5
 
--- AssetRepository.getAllForUserFullSync
+-- AssetRepository.getRecentlyCreatedAssetIds
 select
-  "asset".*,
-  to_json("asset_exif") as "exifInfo",
-  to_json("stacked_assets") as "stack"
+  "id" as "data",
+  "createdAt" as "value"
 from
   "asset"
-  left join "asset_exif" on "asset"."id" = "asset_exif"."assetId"
-  left join "stack" on "stack"."id" = "asset"."stackId"
-  left join lateral (
-    select
-      "stack".*,
-      count("stacked") as "assetCount"
-    from
-      "asset" as "stacked"
-    where
-      "stacked"."stackId" = "stack"."id"
-    group by
-      "stack"."id"
-  ) as "stacked_assets" on "stack"."id" is not null
 where
-  "asset"."ownerId" = $1::uuid
-  and "asset"."visibility" != $2
-  and "asset"."updatedAt" <= $3
-  and "asset"."id" > $4
+  "ownerId" = $1::uuid
+  and "asset"."visibility" = $2
+  and "type" = $3
+  and "deletedAt" is null
 order by
-  "asset"."id"
-limit
-  $5
-
--- AssetRepository.getChangedDeltaSync
-select
-  "asset".*,
-  to_json("asset_exif") as "exifInfo",
-  to_json("stacked_assets") as "stack"
-from
-  "asset"
-  left join "asset_exif" on "asset"."id" = "asset_exif"."assetId"
-  left join "stack" on "stack"."id" = "asset"."stackId"
-  left join lateral (
-    select
-      "stack".*,
-      count("stacked") as "assetCount"
-    from
-      "asset" as "stacked"
-    where
-      "stacked"."stackId" = "stack"."id"
-    group by
-      "stack"."id"
-  ) as "stacked_assets" on "stack"."id" is not null
-where
-  "asset"."ownerId" = any ($1::uuid[])
-  and "asset"."visibility" != $2
-  and "asset"."updatedAt" > $3
+  "value" desc
 limit
   $4
 
