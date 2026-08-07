@@ -1,4 +1,8 @@
+import 'package:flutter/foundation.dart';
+import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:immich_mobile/domain/models/user.model.dart';
+
+part 'user_metadata.model.freezed.dart';
 
 enum UserMetadataKey {
   // do not change this order!
@@ -23,7 +27,7 @@ class Onboarding {
   }
 
   factory Onboarding.fromMap(Map<String, Object?> map) {
-    return Onboarding(isOnboarded: map["isOnboarded"] as bool);
+    return Onboarding(isOnboarded: map["isOnboarded"]! as bool);
   }
 
   @override
@@ -55,6 +59,7 @@ class Preferences {
   final bool tagsEnabled;
   final AvatarColor userAvatarColor;
   final bool showSupportBadge;
+  final int minimumFaces;
 
   const Preferences({
     this.foldersEnabled = false,
@@ -65,6 +70,7 @@ class Preferences {
     this.tagsEnabled = false,
     this.userAvatarColor = AvatarColor.primary,
     this.showSupportBadge = true,
+    this.minimumFaces = 3,
   });
 
   Preferences copyWith({
@@ -76,6 +82,7 @@ class Preferences {
     bool? tagsEnabled,
     AvatarColor? userAvatarColor,
     bool? showSupportBadge,
+    int? minimumFaces,
   }) {
     return Preferences(
       foldersEnabled: foldersEnabled ?? this.foldersEnabled,
@@ -86,6 +93,7 @@ class Preferences {
       tagsEnabled: tagsEnabled ?? this.tagsEnabled,
       userAvatarColor: userAvatarColor ?? this.userAvatarColor,
       showSupportBadge: showSupportBadge ?? this.showSupportBadge,
+      minimumFaces: minimumFaces ?? this.minimumFaces,
     );
   }
 
@@ -99,6 +107,7 @@ class Preferences {
     preferences["tags-Enabled"] = tagsEnabled;
     preferences["avatar-Color"] = userAvatarColor.value;
     preferences["purchase-ShowSupportBadge"] = showSupportBadge;
+    preferences["minimumFaces"] = minimumFaces;
     return preferences;
   }
 
@@ -115,6 +124,7 @@ class Preferences {
         orElse: () => AvatarColor.primary,
       ),
       showSupportBadge: (map["purchase"] as Map<String, Object?>?)?["showSupportBadge"] as bool? ?? true,
+      minimumFaces: (map["people"] as Map<String, Object?>?)?["minimumFaces"] as int? ?? 3,
     );
   }
 
@@ -129,6 +139,7 @@ sharedLinksEnabled: $sharedLinksEnabled,
 tagsEnabled: $tagsEnabled,
 userAvatarColor: $userAvatarColor,
 showSupportBadge: $showSupportBadge,
+minimumFaces: $minimumFaces,
 }''';
   }
 
@@ -145,7 +156,8 @@ showSupportBadge: $showSupportBadge,
         other.sharedLinksEnabled == sharedLinksEnabled &&
         other.tagsEnabled == tagsEnabled &&
         other.userAvatarColor == userAvatarColor &&
-        other.showSupportBadge == showSupportBadge;
+        other.showSupportBadge == showSupportBadge &&
+        other.minimumFaces == minimumFaces;
   }
 
   @override
@@ -157,7 +169,8 @@ showSupportBadge: $showSupportBadge,
         sharedLinksEnabled.hashCode ^
         tagsEnabled.hashCode ^
         userAvatarColor.hashCode ^
-        showSupportBadge.hashCode;
+        showSupportBadge.hashCode ^
+        minimumFaces.hashCode;
   }
 }
 
@@ -186,9 +199,9 @@ class License {
 
   factory License.fromMap(Map<String, Object?> map) {
     return License(
-      activatedAt: DateTime.parse(map["activatedAt"] as String),
-      activationKey: map["activationKey"] as String,
-      licenseKey: map["licenseKey"] as String,
+      activatedAt: DateTime.parse(map["activatedAt"]! as String),
+      activationKey: map["activationKey"]! as String,
+      licenseKey: map["licenseKey"]! as String,
     );
   }
 
@@ -215,61 +228,17 @@ licenseKey: $licenseKey,
 }
 
 // Model for a user metadata stored in the server
-class UserMetadata {
-  final String userId;
-  final UserMetadataKey key;
-  final Onboarding? onboarding;
-  final Preferences? preferences;
-  final License? license;
-
-  const UserMetadata({required this.userId, required this.key, this.onboarding, this.preferences, this.license})
-    : assert(
-        onboarding != null || preferences != null || license != null,
-        'One of onboarding, preferences and license must be provided',
-      );
-
-  UserMetadata copyWith({
-    String? userId,
-    UserMetadataKey? key,
+@freezed
+abstract class UserMetadata with _$UserMetadata {
+  @Assert(
+    'onboarding != null || preferences != null || license != null',
+    'One of onboarding, preferences and license must be provided',
+  )
+  const factory UserMetadata({
+    required String userId,
+    required UserMetadataKey key,
     Onboarding? onboarding,
     Preferences? preferences,
     License? license,
-  }) {
-    return UserMetadata(
-      userId: userId ?? this.userId,
-      key: key ?? this.key,
-      onboarding: onboarding ?? this.onboarding,
-      preferences: preferences ?? this.preferences,
-      license: license ?? this.license,
-    );
-  }
-
-  @override
-  String toString() {
-    return '''UserMetadata: {
-userId: $userId,
-key: $key,
-onboarding: ${onboarding ?? "<NA>"},
-preferences: ${preferences ?? "<NA>"},
-license: ${license ?? "<NA>"},
-}''';
-  }
-
-  @override
-  bool operator ==(covariant UserMetadata other) {
-    if (identical(this, other)) {
-      return true;
-    }
-
-    return other.userId == userId &&
-        other.key == key &&
-        other.onboarding == onboarding &&
-        other.preferences == preferences &&
-        other.license == license;
-  }
-
-  @override
-  int get hashCode {
-    return userId.hashCode ^ key.hashCode ^ onboarding.hashCode ^ preferences.hashCode ^ license.hashCode;
-  }
+  }) = _UserMetadata;
 }

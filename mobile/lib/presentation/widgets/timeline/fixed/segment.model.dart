@@ -107,12 +107,9 @@ class _FixedSegmentRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isScrubbing = ref.watch(timelineStateProvider.select((s) => s.isScrubbing));
-    final timelineService = ref.read(timelineServiceProvider);
+    final timelineService = ref.watch(timelineServiceProvider);
     final isDynamicLayout = columnCount <= (context.isMobile ? 2 : 3);
 
-    if (isScrubbing) {
-      return _buildPlaceholder(context);
-    }
     if (timelineService.hasRange(assetIndex, assetCount)) {
       return _buildAssetRow(
         context,
@@ -120,6 +117,10 @@ class _FixedSegmentRow extends ConsumerWidget {
         timelineService,
         isDynamicLayout,
       );
+    }
+
+    if (isScrubbing) {
+      return _buildPlaceholder(context);
     }
 
     return FutureBuilder<List<BaseAsset>>(
@@ -210,6 +211,10 @@ class _AssetTileWidget extends ConsumerWidget {
       ref.read(multiSelectProvider.notifier).toggleAssetSelection(asset);
     } else {
       await ref.read(timelineServiceProvider).loadAssets(assetIndex, 1);
+      if (!ctx.mounted) {
+        return;
+      }
+
       ref.read(isPlayingMotionVideoProvider.notifier).playing = false;
       AssetViewer.setAsset(ref, asset);
       unawaited(
@@ -256,7 +261,7 @@ class _AssetTileWidget extends ConsumerWidget {
     final lockSelection = _getLockSelectionStatus(ref);
     final showStorageIndicator = ref.watch(timelineArgsProvider.select((args) => args.showStorageIndicator));
     final isReadonlyModeEnabled = ref.watch(readonlyModeProvider);
-    final showStackIndicator = ref.read(timelineServiceProvider).origin != TimelineOrigin.trash;
+    final showStackIndicator = ref.watch(timelineServiceProvider).origin != TimelineOrigin.trash;
 
     return RepaintBoundary(
       child: GestureDetector(

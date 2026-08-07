@@ -1,10 +1,12 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:async/async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:immich_mobile/domain/models/asset/base_asset.model.dart';
 import 'package:immich_mobile/infrastructure/loaders/image_request.dart';
-import 'package:immich_mobile/infrastructure/repositories/metadata.repository.dart';
+import 'package:immich_mobile/infrastructure/repositories/settings.repository.dart';
 import 'package:immich_mobile/presentation/widgets/images/local_image_provider.dart';
 import 'package:immich_mobile/presentation/widgets/images/remote_image_provider.dart';
 import 'package:immich_mobile/presentation/widgets/timeline/constants.dart';
@@ -24,7 +26,7 @@ mixin CancellableImageProviderMixin<T extends Object> on CancellableImageProvide
 
   ImageInfo? getInitialImage(CancellableImageProvider provider) {
     final completer = CancelableCompleter<ImageInfo?>(onCancel: provider.cancel);
-    final cachedStream = provider.resolve(const ImageConfiguration());
+    final cachedStream = provider.resolve(ImageConfiguration.empty);
     ImageInfo? cachedImage;
     final listener = ImageStreamListener((image, synchronousCall) {
       if (synchronousCall) {
@@ -42,10 +44,12 @@ mixin CancellableImageProviderMixin<T extends Object> on CancellableImageProvide
       return cachedImage;
     }
 
-    completer.operation.valueOrCancellation().whenComplete(() {
-      cachedStream.removeListener(listener);
-      cachedOperation = null;
-    });
+    unawaited(
+      completer.operation.valueOrCancellation().whenComplete(() {
+        cachedStream.removeListener(listener);
+        cachedOperation = null;
+      }),
+    );
     cachedOperation = completer.operation;
     return null;
   }
@@ -137,7 +141,7 @@ mixin CancellableImageProviderMixin<T extends Object> on CancellableImageProvide
     final operation = cachedOperation;
     if (operation != null) {
       cachedOperation = null;
-      operation.cancel();
+      unawaited(operation.cancel());
     }
 
     if (hasActiveWork) {
@@ -146,12 +150,27 @@ mixin CancellableImageProviderMixin<T extends Object> on CancellableImageProvide
   }
 }
 
-ImageProvider getFullImageProvider(BaseAsset asset, {Size size = const Size(1080, 1920), bool edited = true}) {
+ImageProvider getFullImageProvider(
+  BaseAsset asset, {
+  Size size = const Size(1080, 1920),
+  bool edited = true,
+  String? localFilePath,
+}) {
   // Create new provider and cache it
   final ImageProvider provider;
-  if (_shouldUseLocalAsset(asset)) {
+  if (localFilePath != null) {
+    provider = FileImage(File(localFilePath));
+  } else if (_shouldUseLocalAsset(asset)) {
     final id = asset is LocalAsset ? asset.id : (asset as RemoteAsset).localId!;
-    provider = LocalFullImageProvider(id: id, size: size, assetType: asset.type, isAnimated: asset.isAnimatedImage);
+    provider = LocalFullImageProvider(
+      id: id,
+      size: size,
+      assetType: asset.type,
+      isAnimated: asset.isAnimatedImage,
+      width: asset.width,
+      height: asset.height,
+      checksum: asset.checksum,
+    );
   } else {
     final String assetId;
     final String thumbhash;
@@ -179,7 +198,7 @@ ImageProvider getFullImageProvider(BaseAsset asset, {Size size = const Size(1080
 ImageProvider? getThumbnailImageProvider(BaseAsset asset, {Size size = kThumbnailResolution, bool edited = true}) {
   if (_shouldUseLocalAsset(asset)) {
     final id = asset is LocalAsset ? asset.id : (asset as RemoteAsset).localId!;
-    return LocalThumbProvider(id: id, size: size, assetType: asset.type);
+    return LocalThumbProvider(id: id, size: size, assetType: asset.type, checksum: asset.checksum);
   }
 
   final assetId = asset is RemoteAsset ? asset.id : (asset as LocalAsset).remoteId;
@@ -189,5 +208,5 @@ ImageProvider? getThumbnailImageProvider(BaseAsset asset, {Size size = kThumbnai
 
 bool _shouldUseLocalAsset(BaseAsset asset) =>
     asset.hasLocal &&
-    (!asset.hasRemote || !MetadataRepository.instance.appConfig.image.preferRemote) &&
+    (!asset.hasRemote || !SettingsRepository.instance.appConfig.image.preferRemote) &&
     !asset.isEdited;

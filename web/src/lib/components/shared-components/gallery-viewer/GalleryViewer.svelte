@@ -17,6 +17,7 @@
   import AssetDeleteConfirmModal from '$lib/modals/AssetDeleteConfirmModal.svelte';
   import ShortcutsModal from '$lib/modals/ShortcutsModal.svelte';
   import { Route } from '$lib/route';
+  import { keyboardManager } from '$lib/stores/keyboard-manager.svelte';
   import { showDeleteModal } from '$lib/stores/preferences.store';
   import { handlePromiseError } from '$lib/utils';
   import { deleteAssets } from '$lib/utils/actions';
@@ -26,10 +27,15 @@
   import { getJustifiedLayoutFromAssets } from '$lib/utils/layout-utils';
   import { navigate } from '$lib/utils/navigation';
   import { isTimelineAsset, toTimelineAsset } from '$lib/utils/timeline-util';
+  import { TUNABLES } from '$lib/utils/tunables';
   import { AssetVisibility, type AssetResponseDto } from '@immich/sdk';
   import { modalManager } from '@immich/ui';
   import { debounce } from 'lodash-es';
   import { t } from 'svelte-i18n';
+
+  const {
+    TIMELINE: { INTERSECTION_EXPAND_TOP, INTERSECTION_EXPAND_BOTTOM },
+  } = TUNABLES;
 
   type Props = {
     assets: AssetResponseDto[];
@@ -38,7 +44,7 @@
     disableAssetSelect?: boolean;
     showArchiveIcon?: boolean;
     viewport: Viewport;
-    onIntersected?: (() => void) | undefined;
+    onEndReached?: (() => void) | undefined;
     showAssetName?: boolean;
     onReload?: (() => void) | undefined;
     pageHeaderOffset?: number;
@@ -54,7 +60,7 @@
     disableAssetSelect = false,
     showArchiveIcon = false,
     viewport,
-    onIntersected = undefined,
+    onEndReached = undefined,
     showAssetName = false,
     onReload = undefined,
     slidingWindowOffset = 0,
@@ -74,24 +80,22 @@
     }),
   );
 
-  const getStyle = (i: number) => {
-    const geo = geometry;
-    return `top: ${geo.getTop(i)}px; left: ${geo.getLeft(i)}px; width: ${geo.getWidth(i)}px; height: ${geo.getHeight(i)}px;`;
+  const getStyle = (index: number) => {
+    return `top: ${geometry.getTop(index)}px; left: ${geometry.getLeft(index)}px; width: ${geometry.getWidth(index)}px; height: ${geometry.getHeight(index)}px;`;
   };
 
-  const isIntersecting = (i: number) => {
-    const geo = geometry;
+  const isInOrNearViewport = (index: number) => {
     const window = slidingWindow;
-    const top = geo.getTop(i);
-    return top + pageHeaderOffset < window.bottom && top + geo.getHeight(i) > window.top;
+    const top = geometry.getTop(index);
+    return top + pageHeaderOffset < window.bottom && top + geometry.getHeight(index) > window.top;
   };
 
-  let shiftKeyIsDown = $state(false);
   let lastAssetMouseEvent: TimelineAsset | null = $state(null);
   let scrollTop = $state(0);
+
   let slidingWindow = $derived.by(() => {
-    const top = (scrollTop || 0) - slidingWindowOffset;
-    const bottom = top + viewport.height + slidingWindowOffset;
+    const top = (scrollTop || 0) - slidingWindowOffset - INTERSECTION_EXPAND_TOP;
+    const bottom = top + viewport.height + slidingWindowOffset + INTERSECTION_EXPAND_BOTTOM;
     return {
       top,
       bottom,
@@ -105,38 +109,23 @@
 
   const updateSlidingWindow = () => (scrollTop = document.scrollingElement?.scrollTop ?? 0);
 
-  const debouncedOnIntersected = debounce(() => onIntersected?.(), 750, { maxWait: 100, leading: true });
+  const debouncedOnEndReached = debounce(() => onEndReached?.(), 750, { maxWait: 100, leading: true });
 
-  let lastIntersectedHeight = 0;
+  let lastEndReachedHeight = 0;
   $effect(() => {
-    // Intersect if there's only one viewport worth of assets left to scroll.
-    if (geometry.containerHeight - slidingWindow.bottom <= viewport.height) {
-      // Notify we got to (near) the end of scroll.
-      const intersectedHeight = geometry.containerHeight;
-      if (lastIntersectedHeight !== intersectedHeight) {
-        debouncedOnIntersected();
-        lastIntersectedHeight = intersectedHeight;
-      }
+    if (geometry.containerHeight - slidingWindow.bottom > viewport.height) {
+      return;
+    }
+
+    const contentHeight = geometry.containerHeight;
+    if (lastEndReachedHeight !== contentHeight) {
+      debouncedOnEndReached();
+      lastEndReachedHeight = contentHeight;
     }
   });
 
   const selectAllAssets = () => {
     assetInteraction.selectAssets(assets.map((a) => toTimelineAsset(a)));
-  };
-
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'Shift') {
-      event.preventDefault();
-
-      shiftKeyIsDown = true;
-    }
-  };
-
-  const onKeyUp = (event: KeyboardEvent) => {
-    if (event.key === 'Shift') {
-      event.preventDefault();
-      shiftKeyIsDown = false;
-    }
   };
 
   const handleSelectAssets = (asset: TimelineAsset) => {
@@ -170,7 +159,7 @@
   };
 
   const selectAssetCandidates = (endAsset: TimelineAsset) => {
-    if (!shiftKeyIsDown) {
+    if (!keyboardManager.shift) {
       return;
     }
 
@@ -190,7 +179,7 @@
   };
 
   const onSelectStart = (event: Event) => {
-    if (assetInteraction.selectionActive && shiftKeyIsDown) {
+    if (assetInteraction.selectionActive && keyboardManager.shift) {
       event.preventDefault();
     }
   };
@@ -318,6 +307,7 @@
         }
         break;
       }
+      // no default
     }
   };
 
@@ -334,13 +324,13 @@
   });
 
   $effect(() => {
-    if (!shiftKeyIsDown) {
+    if (!keyboardManager.shift) {
       assetInteraction.clearCandidates();
     }
   });
 
   $effect(() => {
-    if (shiftKeyIsDown && lastAssetMouseEvent) {
+    if (keyboardManager.shift && lastAssetMouseEvent) {
       selectAssetCandidates(lastAssetMouseEvent);
     }
   });
@@ -366,13 +356,7 @@
   });
 </script>
 
-<svelte:document
-  onkeydown={onKeyDown}
-  onkeyup={onKeyUp}
-  onselectstart={onSelectStart}
-  use:shortcuts={shortcutList}
-  onscroll={() => updateSlidingWindow()}
-/>
+<svelte:document onselectstart={onSelectStart} use:shortcuts={shortcutList} onscroll={() => updateSlidingWindow()} />
 
 {#if assets.length > 0}
   <div
@@ -380,10 +364,10 @@
     style:height={geometry.containerHeight + 'px'}
     style:width={geometry.containerWidth + 'px'}
   >
-    {#each assets as asset, i (asset.id + '-' + i)}
-      {#if isIntersecting(i)}
+    {#each assets as asset, index (asset.id + '-' + index)}
+      {#if isInOrNearViewport(index)}
         {@const currentAsset = toTimelineAsset(asset)}
-        <div class="absolute" style:overflow="clip" style={getStyle(i)}>
+        <div class="absolute" style:overflow="clip" style={getStyle(index)}>
           <Thumbnail
             readonly={disableAssetSelect}
             onClick={() => {
@@ -400,8 +384,8 @@
             asset={currentAsset}
             selected={assetInteraction.hasSelectedAsset(currentAsset.id)}
             selectionCandidate={assetInteraction.hasSelectionCandidate(currentAsset.id)}
-            thumbnailWidth={geometry.getWidth(i)}
-            thumbnailHeight={geometry.getHeight(i)}
+            thumbnailWidth={geometry.getWidth(index)}
+            thumbnailHeight={geometry.getHeight(index)}
           />
           {#if showAssetName && !isTimelineAsset(asset)}
             <div

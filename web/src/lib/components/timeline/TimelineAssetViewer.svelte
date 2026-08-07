@@ -19,7 +19,7 @@
   import { navigate } from '$lib/utils/navigation';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
   import { type AlbumResponseDto, type AssetResponseDto, type PersonResponseDto, getAssetInfo } from '@immich/sdk';
-  import { onDestroy, onMount, untrack } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { t } from 'svelte-i18n';
 
   interface Props {
@@ -86,7 +86,7 @@
   $effect(() => {
     const asset = assetViewerManager.asset;
     if (asset) {
-      untrack(() => handlePromiseError(loadCloseAssets(asset)));
+      handlePromiseError(loadCloseAssets(asset));
     }
   });
 
@@ -166,6 +166,7 @@
 
         break;
       }
+      // no default
     }
   };
   const handleAction = (action: Action) => {
@@ -221,6 +222,7 @@
         });
         break;
       }
+      // no default
     }
   };
   const handleUndoDelete = async (assets: TimelineAsset[]) => {

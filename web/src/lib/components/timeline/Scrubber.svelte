@@ -107,13 +107,15 @@
   ) => {
     if (scrubberMonth === 'lead-in') {
       return relativeTopOffset * scrubberMonthPercent;
-    } else if (scrubberMonth === 'lead-out') {
+    }
+    if (scrubberMonth === 'lead-out') {
       let offset = relativeTopOffset;
       for (const segment of segments) {
         offset += segment.height;
       }
       return offset + relativeBottomOffset * scrubberMonthPercent;
-    } else if (scrubberMonth) {
+    }
+    if (scrubberMonth) {
       let offset = relativeTopOffset;
       let match = false;
       for (const segment of segments) {
@@ -128,9 +130,8 @@
         offset += scrubberMonthPercent * relativeBottomOffset;
       }
       return offset;
-    } else {
-      return scrubOverallPercent * (height - (PADDING_TOP + PADDING_BOTTOM));
     }
+    return scrubOverallPercent * (height - (PADDING_TOP + PADDING_BOTTOM));
   };
   const scrollY = $derived(
     toScrollFromTimelineMonthPercentage(viewportTopMonth, viewportTopMonthScrollPercent, timelineScrollPercent),
@@ -237,7 +238,7 @@
       { zone: 'local', locale: get(locale) },
     );
     const daysInMonth = monthDate.daysInMonth ?? 31;
-    const clampedPercent = clamp(percent, 0, 0.999_999);
+    const clampedPercent = clamp(percent, 0, 0.999999);
     const descending = timelineManager.getAssetOrder() !== AssetOrder.Asc;
     const day = descending
       ? clamp(daysInMonth - Math.floor(clampedPercent * daysInMonth), 1, daysInMonth)
@@ -289,8 +290,8 @@
     }
     if (isHoverOnPaddingBottom) {
       return (
-        getActualHoverLabel(getSegmentYearMonth(segments.at(-1)), 0.999_999) ??
-        getEstimatedHoverLabel(segments.at(-1), 0.999_999)
+        getActualHoverLabel(getSegmentYearMonth(segments.at(-1)), 0.999999) ??
+        getEstimatedHoverLabel(segments.at(-1), 0.999999)
       );
     }
     if (!activeSegment?.dataset.segmentYearMonth) {
@@ -344,14 +345,14 @@
     if (scrollY !== undefined) {
       if (scrollY < relativeTopOffset) {
         return segments.at(0)?.dateFormatted;
-      } else {
-        let offset = relativeTopOffset;
-        for (const segment of segments) {
-          offset += segment.height;
-        }
-        if (scrollY > offset) {
-          return segments.at(-1)?.dateFormatted;
-        }
+      }
+
+      let offset = relativeTopOffset;
+      for (const segment of segments) {
+        offset += segment.height;
+      }
+      if (scrollY > offset) {
+        return segments.at(-1)?.dateFormatted;
       }
     }
     return scrollSegment?.dateFormatted || '';
@@ -454,7 +455,7 @@
       overallScrollPercent: toTimelineY(hoverY),
       scrubberMonthScrollPercent: timelineMonthPercentY,
     };
-    if (wasDragging === false && isDragging) {
+    if (!wasDragging && isDragging) {
       void startScrub?.(scrubData);
       void onScrub?.(scrubData);
     }
@@ -614,11 +615,11 @@
       return;
     }
 
-    const timeout = window.setTimeout(() => {
+    const timeout = setTimeout(() => {
       void timelineManager.ensureScrubberMonthGeometry(yearMonth);
     }, 120);
 
-    return () => window.clearTimeout(timeout);
+    return () => clearTimeout(timeout);
   });
 </script>
 
@@ -639,7 +640,7 @@
   aria-valuemax={toScrollY(1)}
   aria-valuemin={toScrollY(0)}
   data-id="scrubber"
-  class="absolute end-0 z-1 select-none hover:cursor-row-resize"
+  class="absolute inset-e-0 z-1 select-none hover:cursor-row-resize"
   style:top={topOffset + 'px'}
   style:padding-top={PADDING_TOP + 'px'}
   style:padding-bottom={PADDING_BOTTOM + 'px'}
@@ -721,16 +722,18 @@
     >
       {#if !usingMobileDevice}
         {#if !isSingleYearScrubber && segment.hasLabel}
-          <div class="absolute end-5 bottom-0 font-mono text-[13px] dark:text-immich-dark-fg">
+          <div class="absolute inset-e-5 bottom-0 font-mono text-[13px] dark:text-immich-dark-fg">
             {segment.year}
           </div>
         {/if}
         {#if isSingleYearScrubber && segment.hasDot}
-          <div class="absolute end-2 bottom-0 text-[11px] leading-none whitespace-nowrap text-gray-500 dark:text-gray-400">
+          <div
+            class="absolute inset-e-2 bottom-0 text-[11px] leading-none whitespace-nowrap text-gray-500 dark:text-gray-400"
+          >
             {formatMonthTickLabel(segment)}
           </div>
         {:else if segment.hasDot}
-          <div class="absolute end-3 bottom-0 size-1 rounded-full bg-gray-300"></div>
+          <div class="absolute inset-e-3 bottom-0 size-1 rounded-full bg-gray-300"></div>
         {/if}
       {/if}
     </div>

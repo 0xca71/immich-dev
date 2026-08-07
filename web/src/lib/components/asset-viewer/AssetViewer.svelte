@@ -14,6 +14,7 @@
   import { authManager } from '$lib/managers/auth-manager.svelte';
   import { editManager, EditToolType } from '$lib/managers/edit/edit-manager.svelte';
   import { eventManager } from '$lib/managers/event-manager.svelte';
+  import type { TimelineAsset } from '$lib/managers/timeline-manager/types';
   import { getAssetActions } from '$lib/services/asset.service';
   import { faceManager } from '$lib/stores/face.svelte';
   import { ocrManager } from '$lib/stores/ocr.svelte';
@@ -23,6 +24,7 @@
   import type { OnUndoDelete } from '$lib/utils/actions';
   import { navigateToAsset } from '$lib/utils/asset-utils';
   import { handleError } from '$lib/utils/handle-error';
+  import { navigate } from '$lib/utils/navigation';
   import { InvocationTracker } from '$lib/utils/invocationTracker';
   import { SlideshowHistory } from '$lib/utils/slideshow-history';
   import { toTimelineAsset } from '$lib/utils/timeline-util';
@@ -37,6 +39,7 @@
   } from '@immich/sdk';
   import { CommandPaletteDefaultProvider } from '@immich/ui';
   import { onDestroy, onMount, untrack } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import type { SwipeCustomEvent } from 'svelte-gestures';
   import { t } from 'svelte-i18n';
   import { fly } from 'svelte/transition';
@@ -119,19 +122,20 @@
   let previewStackedAsset: AssetResponseDto | undefined = $state();
   let stack: StackResponseDto | null = $state(null);
   let assetViewerElement = $state<HTMLElement>();
+  let fullscreenElement = $state<Element>();
 
   const asset = $derived(previewStackedAsset ?? cursor.current);
   const nextAsset = $derived(cursor.nextAsset);
   const previousAsset = $derived(cursor.previousAsset);
   let sharedLink = getSharedLink();
 
-  let playOriginalVideo = $state($alwaysLoadOriginalVideo);
+  let isPlayingOriginalVideo = $state($alwaysLoadOriginalVideo);
   let slideshowStartAssetId = $state<string>();
   const wheelZoomSpeedDivisor = 300;
   const wheelZoomSpeedLimit = 0.35;
 
   const setPlayOriginalVideo = (value: boolean) => {
-    playOriginalVideo = value;
+    isPlayingOriginalVideo = value;
   };
 
   const refreshStack = async () => {
@@ -166,6 +170,15 @@
     }
   };
 
+  const onAssetsUndoArchive = async (assets: TimelineAsset[]) => {
+    if (assets.length === 0) {
+      return;
+    }
+    const restoredAsset = assets[0];
+    await assetViewerManager.setAssetId(restoredAsset.id);
+    await navigate({ targetRoute: 'current', assetId: restoredAsset.id });
+  };
+
   onMount(() => {
     syncAssetViewerOpenClass(true);
     const wheelAbortController = new AbortController();
@@ -188,11 +201,13 @@
     });
 
     const slideshowNavigationUnsubscribe = slideshowNavigation.subscribe((value) => {
-      if (value === SlideshowNavigation.Shuffle) {
-        slideshowHistory.reset();
-        if (isSlideshowAssetPlayable(asset)) {
-          slideshowHistory.queue(toTimelineAsset(asset));
-        }
+      if (value !== SlideshowNavigation.Shuffle) {
+        return;
+      }
+
+      slideshowHistory.reset();
+      if (isSlideshowAssetPlayable(asset)) {
+        slideshowHistory.queue(toTimelineAsset(asset));
       }
     });
 
@@ -247,7 +262,7 @@
   };
 
   const resolvePlayableSlideshowAsset = async (candidate: AssetResponseDto, order: SlideshowAssetOrder) => {
-    const visitedAssetIds = new Set<string>();
+    const visitedAssetIds = new SvelteSet<string>();
     let nextCandidate = await getAdjacentSlideshowAsset(candidate, order);
 
     while (nextCandidate && !visitedAssetIds.has(nextCandidate.id)) {
@@ -324,7 +339,7 @@
             slideshowHistory.queue(randomAsset);
             await assetViewerManager.setAssetId(randomAsset.id);
             hasNext = true;
-          } else {
+          } else if (!resolveSlideshowRandomAsset) {
             const asset = await onRandom?.();
             if (asset) {
               slideshowHistory.queue(asset);
@@ -458,10 +473,13 @@
         closeViewer();
         break;
       }
+      // no default
     }
 
     onAction?.(action);
   };
+
+  const isFullScreen = $derived(!!fullscreenElement);
 
   $effect(() => {
     if (album && !album.isActivityEnabled && activityManager.commentCount === 0) {
@@ -595,9 +613,7 @@
 
     if (event.detail.direction === 'left') {
       navigateAsset('next');
-    }
-
-    if (event.detail.direction === 'right') {
+    } else if (event.detail.direction === 'right') {
       navigateAsset('previous');
     }
   };
@@ -682,17 +698,21 @@
 </script>
 
 <CommandPaletteDefaultProvider name={$t('assets')} actions={[Tag, TagPeople]} />
-<OnEvents {onAssetUpdate} />
+<OnEvents {onAssetUpdate} {onAssetsUndoArchive} />
+
+<svelte:document
+  bind:fullscreenElement
+  use:shortcuts={[
+    { shortcut: { key: 'ArrowUp' }, onShortcut: () => navigateStack('previous') },
+    { shortcut: { key: 'ArrowDown' }, onShortcut: () => navigateStack('next') },
+  ]}
+/>
 
 <section
   id="immich-asset-viewer"
   class="fixed inset-s-0 top-0 grid size-full grid-cols-4 grid-rows-[64px_1fr] overflow-hidden bg-black"
   bind:this={assetViewerElement}
   use:focusTrap
-  use:shortcuts={[
-    { shortcut: { key: 'ArrowUp' }, onShortcut: () => navigateStack('previous') },
-    { shortcut: { key: 'ArrowDown' }, onShortcut: () => navigateStack('next') },
-  ]}
 >
   <!-- Top navigation bar -->
   {#if $slideshowState === SlideshowState.None && !assetViewerManager.isShowEditor}
@@ -702,14 +722,12 @@
         {album}
         {person}
         {stack}
-        showSlideshow={true}
         preAction={handlePreAction}
         onAction={handleAction}
         {onUndoDelete}
-        onPlaySlideshow={() => ($slideshowState = SlideshowState.PlaySlideshow)}
         onClose={onClose ? () => onClose(stack?.primaryAssetId ?? asset.id) : undefined}
         {onRemoveFromAlbum}
-        {playOriginalVideo}
+        {isPlayingOriginalVideo}
         {setPlayOriginalVideo}
       />
     </div>
@@ -718,7 +736,9 @@
   {#if $slideshowState != SlideshowState.None}
     <div class="absolute inset-s-0 top-0 flex w-full justify-start">
       <SlideshowBar
+        {isFullScreen}
         assetType={previewStackedAsset?.type ?? asset.type}
+        onSetToFullScreen={() => assetViewerElement?.requestFullscreen?.()}
         onPrevious={() => navigateAsset('previous')}
         onNext={() => navigateAsset('next')}
         onClose={() => ($slideshowState = SlideshowState.StopSlideshow)}
@@ -745,7 +765,7 @@
         onClose={closeViewer}
         onVideoEnded={() => navigateAsset()}
         onVideoStarted={handleVideoStarted}
-        {playOriginalVideo}
+        playOriginalVideo={isPlayingOriginalVideo}
       />
     {:else if viewerKind === 'LiveVideoViewer'}
       <VideoViewer
@@ -757,7 +777,7 @@
         onPreviousAsset={() => navigateAsset('previous')}
         onNextAsset={() => navigateAsset('next')}
         onVideoEnded={() => (assetViewerManager.isPlayingMotionPhoto = false)}
-        {playOriginalVideo}
+        playOriginalVideo={isPlayingOriginalVideo}
       />
     {:else if viewerKind === 'ImagePanaramaViewer'}
       <ImagePanoramaViewer {asset} />
@@ -777,7 +797,7 @@
         onClose={closeViewer}
         onVideoEnded={() => navigateAsset()}
         onVideoStarted={handleVideoStarted}
-        {playOriginalVideo}
+        playOriginalVideo={isPlayingOriginalVideo}
       />
     {/if}
 
@@ -828,13 +848,13 @@
     </div>
   {/if}
 
-  {#if stack && withStacked && !assetViewerManager.isShowEditor}
+  {#if stack && withStacked && !assetViewerManager.isShowEditor && $slideshowState === SlideshowState.None}
     {@const stackedAssets = stack.assets}
-    <div id="stack-slideshow" class="pointer-events-none absolute bottom-0 col-span-4 col-start-1 w-full">
+    <div id="stack-slideshow" class="absolute bottom-0 col-span-4 col-start-1 w-fit max-w-full">
       <div class="no-wrap horizontal-scrollbar relative flex flex-row overflow-x-auto overflow-y-hidden">
         {#each stackedAssets as stackedAsset (stackedAsset.id)}
           <div
-            class={['pointer-events-auto relative inline-block px-1 pb-2 transition-all']}
+            class={['relative inline-block px-1 pb-2 transition-all']}
             style:bottom={stackedAsset.id === asset.id ? '0' : '-10px'}
           >
             <Thumbnail

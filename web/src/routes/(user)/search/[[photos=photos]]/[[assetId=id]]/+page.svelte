@@ -35,6 +35,7 @@
     AssetTypeEnum,
     type AlbumResponseDto,
     type AssetResponseDto,
+    AssetVisibility,
     getPerson,
     getTagById,
     type MetadataSearchDto,
@@ -142,8 +143,10 @@
     try {
       const { albums, assets } =
         ('query' in searchDto || 'queryAssetId' in searchDto) && smartSearchEnabled
-          ? await searchSmart({ smartSearchDto: { ...searchDto, language: $lang } })
-          : await searchAssets({ metadataSearchDto: searchDto });
+          ? await searchSmart({
+              smartSearchDto: { visibility: AssetVisibility.Timeline, ...searchDto, language: $lang },
+            })
+          : await searchAssets({ metadataSearchDto: { visibility: AssetVisibility.Timeline, ...searchDto } });
 
       searchResultAlbums.push(...albums.items);
       searchResultAssets.push(...assets.items);
@@ -241,6 +244,7 @@
 
   function removeFilter(key: keyof SearchTerms) {
     delete terms[key];
+    assetMultiSelectManager.clear();
     void goto(Route.search(terms));
   }
 </script>
@@ -253,57 +257,59 @@
   <section id="search-chips" class="mx-auto mt-24 w-full max-w-7xl px-4 sm:px-8 lg:px-12">
     <div class="flex w-full flex-wrap place-content-center place-items-center gap-2.5 sm:gap-3">
       {#each searchTermKeys as searchKey (searchKey)}
-      {#if !(searchKey === 'type' && terms.isMotion)}
-        {@const value = terms[searchKey]}
-        {@const hasChipValue = (searchKey === 'isMotion' && value === true) || value !== true}
-        <div
-          class="inline-flex max-w-full items-center rounded-full bg-primary/10 py-1 ps-1 pe-1 text-xs text-primary ring-1 ring-primary/15 transition-shadow hover:ring-primary/25 dark:bg-immich-dark-primary/15 dark:text-immich-dark-primary dark:ring-immich-dark-primary/20 dark:hover:ring-immich-dark-primary/30"
-        >
-          <span
-            class="shrink-0 rounded-full bg-primary px-3 py-1.5 font-medium text-light dark:bg-immich-dark-primary dark:text-immich-dark-gray"
+        {#if !(searchKey === 'type' && terms.isMotion)}
+          {@const value = terms[searchKey]}
+          {@const hasChipValue = (searchKey === 'isMotion' && value === true) || value !== true}
+          <div
+            class="inline-flex max-w-full items-center rounded-full bg-primary/10 py-1 ps-1 pe-1 text-xs text-primary ring-1 ring-primary/15 transition-shadow hover:ring-primary/25 dark:bg-immich-dark-primary/15 dark:text-immich-dark-primary dark:ring-immich-dark-primary/20 dark:hover:ring-immich-dark-primary/30"
           >
-            {getHumanReadableSearchKey(searchKey as keyof SearchTerms)}
-          </span>
-
-          {#if hasChipValue}
-            <span class="max-w-[min(36rem,55vw)] min-w-0 truncate px-3 py-1.5 text-immich-fg dark:text-immich-dark-fg">
-              {#if searchKey === 'isMotion' && value === true}
-                {$t('search_page_motion_photos')}
-              {:else if (searchKey === 'takenAfter' || searchKey === 'takenBefore') && typeof value === 'string'}
-                {getHumanReadableDate(value)}
-              {:else if searchKey === 'personIds' && Array.isArray(value)}
-                {#await getPersonName(value) then personName}
-                  {personName}
-                {/await}
-              {:else if searchKey === 'tagIds' && (Array.isArray(value) || value === null)}
-                {#await getTagNames(value) then tagNames}
-                  {tagNames}
-                {/await}
-              {:else if searchKey === 'type' && value === AssetTypeEnum.Image}
-                {$t('image')}
-              {:else if searchKey === 'type' && value === AssetTypeEnum.Video}
-                {$t('video')}
-              {:else if searchKey === 'rating'}
-                {$t('rating_count', { values: { count: value ?? 0 } })}
-              {:else if value === null || value === ''}
-                {$t('unknown')}
-              {:else}
-                {value}
-              {/if}
+            <span
+              class="shrink-0 rounded-full bg-primary px-3 py-1.5 font-medium text-light dark:bg-immich-dark-primary dark:text-immich-dark-gray"
+            >
+              {getHumanReadableSearchKey(searchKey as keyof SearchTerms)}
             </span>
-          {/if}
 
-          <button
-            type="button"
-            class="ms-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-primary outline-offset-2 outline-immich-primary transition-colors hover:bg-primary/15 focus-visible:outline-2 dark:text-immich-dark-primary dark:outline-immich-dark-primary dark:hover:bg-immich-dark-primary/20"
-            aria-label={$t('remove_filter')}
-            title={$t('remove_filter')}
-            onclick={() => removeFilter(searchKey)}
-          >
-            <Icon icon={mdiClose} size="14" />
-          </button>
-        </div>
-      {/if}
+            {#if hasChipValue}
+              <span
+                class="max-w-[min(36rem,55vw)] min-w-0 truncate px-3 py-1.5 text-immich-fg dark:text-immich-dark-fg"
+              >
+                {#if searchKey === 'isMotion' && value === true}
+                  {$t('search_page_motion_photos')}
+                {:else if (searchKey === 'takenAfter' || searchKey === 'takenBefore') && typeof value === 'string'}
+                  {getHumanReadableDate(value)}
+                {:else if searchKey === 'personIds' && Array.isArray(value)}
+                  {#await getPersonName(value) then personName}
+                    {personName}
+                  {/await}
+                {:else if searchKey === 'tagIds' && (Array.isArray(value) || value === null)}
+                  {#await getTagNames(value) then tagNames}
+                    {tagNames}
+                  {/await}
+                {:else if searchKey === 'type' && value === AssetTypeEnum.Image}
+                  {$t('image')}
+                {:else if searchKey === 'type' && value === AssetTypeEnum.Video}
+                  {$t('video')}
+                {:else if searchKey === 'rating'}
+                  {$t('rating_count', { values: { count: value ?? 0 } })}
+                {:else if value === null || value === ''}
+                  {$t('unknown')}
+                {:else}
+                  {value}
+                {/if}
+              </span>
+            {/if}
+
+            <button
+              type="button"
+              class="ms-0.5 flex size-7 shrink-0 items-center justify-center rounded-full text-primary outline-offset-2 outline-immich-primary transition-colors hover:bg-primary/15 focus-visible:outline-2 dark:text-immich-dark-primary dark:outline-immich-dark-primary dark:hover:bg-immich-dark-primary/20"
+              aria-label={$t('remove_filter')}
+              title={$t('remove_filter')}
+              onclick={() => removeFilter(searchKey)}
+            >
+              <Icon icon={mdiClose} size="14" />
+            </button>
+          </div>
+        {/if}
       {/each}
     </div>
   </section>
@@ -320,7 +326,7 @@
       <GalleryViewer
         assets={searchResultAssets}
         assetInteraction={assetMultiSelectManager}
-        onIntersected={loadNextPage}
+        onEndReached={loadNextPage}
         showArchiveIcon={true}
         {viewport}
         onReload={onSearchQueryUpdate}
@@ -398,8 +404,7 @@
     {:else}
       <div class="fixed inset-s-0 top-0 z-2 w-full">
         <ControlAppBar onClose={() => goto(previousRoute)} backIcon={mdiArrowLeft}>
-          <div class="absolute bg-light"></div>
-          <div class="w-full flex-1 ps-4">
+          <div class="mx-auto w-full max-w-2xl pe-2">
             <SearchBar grayTheme={false} value={terms?.query ?? ''} searchQuery={terms} />
           </div>
         </ControlAppBar>

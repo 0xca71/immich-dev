@@ -7,24 +7,28 @@
   import { SlideshowNavigation, slideshowStore } from '$lib/stores/slideshow.store';
   import { AssetTypeEnum } from '@immich/sdk';
   import { IconButton, modalManager } from '@immich/ui';
-  import { mdiChevronLeft, mdiChevronRight, mdiClose, mdiCog, mdiPause, mdiPlay } from '@mdi/js';
+  import { mdiChevronLeft, mdiChevronRight, mdiClose, mdiCog, mdiFullscreen, mdiPause, mdiPlay } from '@mdi/js';
   import { onDestroy, onMount } from 'svelte';
   import { useSwipe } from 'svelte-gestures';
   import { t } from 'svelte-i18n';
   import { fly } from 'svelte/transition';
 
   interface Props {
+    isFullScreen: boolean;
     assetType: AssetTypeEnum;
     onNext?: () => void;
     onPrevious?: () => void;
     onClose?: () => void;
+    onSetToFullScreen?: () => void;
   }
 
   let {
+    isFullScreen,
     assetType,
     onNext = () => {},
     onPrevious = () => {},
     onClose = () => {},
+    onSetToFullScreen = () => {},
   }: Props = $props();
 
   const { restartProgress, stopProgress, slideshowDelay, showProgressBar, slideshowNavigation, slideshowAutoplay } =
@@ -57,10 +61,12 @@
 
   const hideControlsAfterDelay = () => {
     timer = setTimeout(() => {
-      if (!isOverControls) {
-        showControls = false;
-        setCursorStyle('none');
+      if (isOverControls) {
+        return;
       }
+
+      showControls = false;
+      setCursorStyle('none');
     }, 2500);
   };
 
@@ -73,10 +79,12 @@
     });
 
     unsubscribeStop = stopProgress.subscribe((value) => {
-      if (value) {
-        progressBar?.restart();
-        stopControlsHideTimer();
+      if (!value) {
+        return;
       }
+
+      progressBar?.restart();
+      stopControlsHideTimer();
     });
   });
 
@@ -102,8 +110,28 @@
   };
 
   const onShowSettings = async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    }
     await modalManager.show(SlideshowSettingsModal);
   };
+
+  onMount(() => {
+    const exitFullscreenHandler = () => {
+      const doc = document as Document & { webkitIsFullScreen?: boolean };
+      if (!document.fullscreenElement && !doc.webkitIsFullScreen) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('fullscreenchange', exitFullscreenHandler);
+    document.addEventListener('webkitfullscreenchange', exitFullscreenHandler);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', exitFullscreenHandler);
+      document.removeEventListener('webkitfullscreenchange', exitFullscreenHandler);
+    };
+  });
 
   const { swipe, onswipe, onswipedown } = useSwipe(
     () => {},
@@ -145,7 +173,7 @@
 
 {#if showControls}
   <div
-    class="dark m-4 flex gap-2"
+    class="dark m-4 flex gap-2 rounded-3xl bg-black/40 px-2 backdrop-blur-sm"
     onmouseenter={() => (isOverControls = true)}
     onmouseleave={() => (isOverControls = false)}
     transition:fly={{ duration: 150 }}
@@ -194,6 +222,16 @@
       onclick={onShowSettings}
       aria-label={$t('slideshow_settings')}
     />
+    {#if !isFullScreen}
+      <IconButton
+        variant="ghost"
+        shape="round"
+        color="secondary"
+        icon={mdiFullscreen}
+        onclick={onSetToFullScreen}
+        aria-label={$t('set_slideshow_to_fullscreen')}
+      />
+    {/if}
   </div>
 {/if}
 

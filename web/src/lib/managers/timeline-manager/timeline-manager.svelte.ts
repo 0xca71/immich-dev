@@ -1,4 +1,4 @@
-import { AssetOrder, getAssetInfo, getTimeBuckets, AssetOrderBy, type AssetResponseDto } from '@immich/sdk';
+import { AssetOrder, AssetOrderBy, getAssetInfo, getTimeBuckets, type AssetResponseDto } from '@immich/sdk';
 import { clamp, isEqual } from 'lodash-es';
 import { SvelteDate, SvelteSet } from 'svelte/reactivity';
 import { VirtualScrollManager } from '$lib/managers/VirtualScrollManager/VirtualScrollManager.svelte';
@@ -95,6 +95,7 @@ export class TimelineManager extends VirtualScrollManager {
   #websocketSupport: WebsocketSupport | undefined;
   #options: TimelineManagerOptions = TimelineManager.#INIT_OPTIONS;
   #updatingViewportProximities = false;
+  #scrubberGeometryGeneration = 0;
   #scrollableElement: HTMLElement | undefined = $state();
   #showAssetOwners = new PersistedLocalStorage<boolean>('album-show-asset-owners', false);
   #unsubscribes: Array<() => void> = [];
@@ -116,7 +117,15 @@ export class TimelineManager extends VirtualScrollManager {
 
     this.#unsubscribes.push(
       eventManager.on({
-        AssetUpdate: (asset: AssetResponseDto) => this.#updateAssets([toTimelineAsset(asset)]),
+        AssetUpdate: (asset: AssetResponseDto) => {
+          const timelineAsset = toTimelineAsset(asset);
+          if (this.#options.albumId || this.#options.personId) {
+            this.#updateAssets([timelineAsset]);
+          } else {
+            this.upsertAssets([timelineAsset]);
+          }
+        },
+        AssetsUnarchive: (assets) => this.upsertAssets(assets),
       }),
     );
   }
@@ -216,6 +225,11 @@ export class TimelineManager extends VirtualScrollManager {
 
     for (const month of this.months) {
       updateTimelineMonthViewportProximity(this, month);
+      if (month.isInOrNearViewport && month.isLoaded) {
+        for (const day of month.timelineDays) {
+          day.updateAssetBoundaries();
+        }
+      }
     }
 
     const month = this.months.find((month) => month.isInViewport);
@@ -242,20 +256,34 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   async ensureScrubberMonthGeometry(yearMonth: TimelineYearMonth) {
+    const generation = ++this.#scrubberGeometryGeneration;
     const month = getTimelineMonthByDate(this, yearMonth);
     if (!month) {
+      if (generation === this.#scrubberGeometryGeneration) {
+        this.#createScrubberMonths();
+      }
       return;
     }
 
     await this.loadTimelineMonth(yearMonth, { cancelable: false });
+    if (generation !== this.#scrubberGeometryGeneration) {
+      return;
+    }
     this.clearDeferredLayout(month);
     this.#createScrubberMonths();
   }
 
   async ensureScrubberYearGeometry(year: number) {
+    const generation = ++this.#scrubberGeometryGeneration;
+    await this.#ensureScrubberYearGeometry(year, generation);
+  }
+
+  async #ensureScrubberYearGeometry(year: number, generation: number) {
     const months = this.months.filter((month) => month.yearMonth.year === year);
     if (months.length === 0) {
-      this.#createScrubberMonths();
+      if (generation === this.#scrubberGeometryGeneration) {
+        this.#createScrubberMonths();
+      }
       return;
     }
 
@@ -266,16 +294,22 @@ export class TimelineManager extends VirtualScrollManager {
       }),
     );
 
+    if (generation !== this.#scrubberGeometryGeneration) {
+      return;
+    }
     this.#createScrubberMonths();
   }
 
-  getScrubberDateAtMonthScrollPercent(yearMonth: TimelineYearMonth, monthScrollPercent: number): TimelineDate | undefined {
+  getScrubberDateAtMonthScrollPercent(
+    yearMonth: TimelineYearMonth,
+    monthScrollPercent: number,
+  ): TimelineDate | undefined {
     const month = getTimelineMonthByDate(this, yearMonth);
     if (!month?.isLoaded || !month.isHeightActual || month.timelineDays.length === 0) {
       return undefined;
     }
 
-    const clampedPercent = clamp(monthScrollPercent, 0, 0.999_999);
+    const clampedPercent = clamp(monthScrollPercent, 0, 0.999999);
     const monthY = clampedPercent * month.height;
     let lastMatchingDay = month.timelineDays[0];
 
@@ -304,14 +338,16 @@ export class TimelineManager extends VirtualScrollManager {
       ...this.#options,
     });
 
-    this.availableYears = [...new Set(timebuckets.map((timeBucket) => new SvelteDate(timeBucket.timeBucket).getUTCFullYear()))].sort(
-      (left, right) => right - left,
-    );
+    this.availableYears = [
+      ...new SvelteSet(timebuckets.map((timeBucket) => new SvelteDate(timeBucket.timeBucket).getUTCFullYear())),
+    ].sort((left, right) => right - left);
 
     const filteredTimebuckets =
       this.#options.displayYear === undefined
         ? timebuckets
-        : timebuckets.filter((timeBucket) => new SvelteDate(timeBucket.timeBucket).getUTCFullYear() === this.#options.displayYear);
+        : timebuckets.filter(
+            (timeBucket) => new SvelteDate(timeBucket.timeBucket).getUTCFullYear() === this.#options.displayYear,
+          );
 
     this.months = filteredTimebuckets.map((timeBucket) => {
       const date = new SvelteDate(timeBucket.timeBucket);
@@ -336,18 +372,24 @@ export class TimelineManager extends VirtualScrollManager {
       return;
     }
 
+    const scrubberGeometryGeneration = ++this.#scrubberGeometryGeneration;
     this.suspendTransitions = true;
     try {
       await this.initTask.reset();
       await this.#init(options);
+      if (scrubberGeometryGeneration !== this.#scrubberGeometryGeneration) {
+        return;
+      }
       this.updateViewportGeometry(false);
-      if (options.displayYear !== undefined) {
-        await this.ensureScrubberYearGeometry(options.displayYear);
-      } else {
+      if (options.displayYear === undefined) {
         this.#createScrubberMonths();
+      } else {
+        await this.#ensureScrubberYearGeometry(options.displayYear, scrubberGeometryGeneration);
       }
     } finally {
-      this.suspendTransitions = false;
+      if (scrubberGeometryGeneration === this.#scrubberGeometryGeneration) {
+        this.suspendTransitions = false;
+      }
     }
   }
 
@@ -416,10 +458,7 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   async loadTimelineMonth(yearMonth: TimelineYearMonth, options?: { cancelable: boolean }): Promise<void> {
-    let cancelable = true;
-    if (options) {
-      cancelable = options.cancelable;
-    }
+    const cancelable = options?.cancelable ?? true;
     const timelineMonth = getTimelineMonthByDate(this, yearMonth);
     if (!timelineMonth) {
       return;
@@ -576,10 +615,7 @@ export class TimelineManager extends VirtualScrollManager {
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const idsToUpdate = new Set(cache.keys());
     const result = this.#runAssetCallback(idsToUpdate, (asset) => void updateObject(asset, cache.get(asset.id)));
-    const notUpdated: TimelineAsset[] = [];
-    for (const assetId of result.notUpdated) {
-      notUpdated.push(cache.get(assetId)!);
-    }
+    const notUpdated: TimelineAsset[] = Array.from(result.notUpdated, (assetId) => cache.get(assetId)!);
     return notUpdated;
   }
 
@@ -614,7 +650,9 @@ export class TimelineManager extends VirtualScrollManager {
     const assetsToAdd = [];
     for (const segment of assetsToMoveSegments) {
       for (const moveAsset of segment) {
-        assetsToAdd.push(moveAsset.asset);
+        if (!this.isExcluded(moveAsset.asset)) {
+          assetsToAdd.push(moveAsset.asset);
+        }
       }
     }
     this.addAssetsUpsertSegments(assetsToAdd);
@@ -677,7 +715,9 @@ export class TimelineManager extends VirtualScrollManager {
   }
 
   isExcluded(asset: TimelineAsset) {
+    const displayYear = this.#options.displayYear;
     return (
+      (displayYear !== undefined && getOrderingDate(asset, this.getOrderBy()).year !== displayYear) ||
       isMismatched(this.#options.visibility, asset.visibility) ||
       isMismatched(this.#options.isFavorite, asset.isFavorite) ||
       isMismatched(this.#options.isTrashed, asset.isTrashed) ||
@@ -688,6 +728,10 @@ export class TimelineManager extends VirtualScrollManager {
 
   getAssetOrder() {
     return this.#options.order ?? AssetOrder.Desc;
+  }
+
+  getOrderBy() {
+    return this.#options.orderBy ?? AssetOrderBy.TakenAt;
   }
 
   protected postCreateSegments(): void {

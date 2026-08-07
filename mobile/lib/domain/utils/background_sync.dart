@@ -28,6 +28,7 @@ class BackgroundSyncManager {
   final SyncErrorCallback? onCloudIdSyncError;
 
   Cancelable<bool?>? _syncTask;
+  bool _syncQueued = false;
   Cancelable<void>? _syncWebsocketTask;
   Cancelable<void>? _cloudIdSyncTask;
   Cancelable<void>? _deviceAlbumSyncTask;
@@ -50,53 +51,28 @@ class BackgroundSyncManager {
   });
 
   Future<void> cancel() async {
-    final futures = <Future>[];
-
-    if (_syncTask != null) {
-      futures.add(_syncTask!.future);
+    _syncQueued = false;
+    final tasks = [
+      _syncTask,
+      _syncWebsocketTask,
+      _cloudIdSyncTask,
+      _linkedAlbumSyncTask,
+      _deviceAlbumSyncTask,
+      _hashTask,
+    ];
+    final futures = [
+      for (final task in tasks)
+        if (task != null) task.future,
+    ];
+    for (final task in tasks) {
+      task?.cancel();
     }
-    _syncTask?.cancel();
     _syncTask = null;
-
-    if (_syncWebsocketTask != null) {
-      futures.add(_syncWebsocketTask!.future);
-    }
-    _syncWebsocketTask?.cancel();
     _syncWebsocketTask = null;
-
-    if (_cloudIdSyncTask != null) {
-      futures.add(_cloudIdSyncTask!.future);
-    }
-    _cloudIdSyncTask?.cancel();
     _cloudIdSyncTask = null;
-
-    if (_linkedAlbumSyncTask != null) {
-      futures.add(_linkedAlbumSyncTask!.future);
-    }
-    _linkedAlbumSyncTask?.cancel();
     _linkedAlbumSyncTask = null;
-
-    try {
-      await Future.wait(futures);
-    } on CanceledError {
-      // Ignore cancellation errors
-    }
-  }
-
-  Future<void> cancelLocal() async {
-    final futures = <Future>[];
-
-    if (_hashTask != null) {
-      futures.add(_hashTask!.future);
-    }
-    _hashTask?.cancel();
-    _hashTask = null;
-
-    if (_deviceAlbumSyncTask != null) {
-      futures.add(_deviceAlbumSyncTask!.future);
-    }
-    _deviceAlbumSyncTask?.cancel();
     _deviceAlbumSyncTask = null;
+    _hashTask = null;
 
     try {
       await Future.wait(futures);
@@ -159,8 +135,9 @@ class BackgroundSyncManager {
         });
   }
 
-  Future<bool> syncRemote() {
+  Future<bool> syncRemote({bool enqueue = false}) {
     if (_syncTask != null) {
+      _syncQueued |= enqueue;
       return _syncTask!.future.then((result) => result ?? false).catchError((_) => false);
     }
 
@@ -174,15 +151,20 @@ class BackgroundSyncManager {
         .then((result) {
           final success = result ?? false;
           onRemoteSyncComplete?.call(success);
+          _syncQueued &= success;
           return success;
         })
         .catchError((error) {
           onRemoteSyncError?.call(error.toString());
-          _syncTask = null;
+          _syncQueued = false;
           return false;
         })
         .whenComplete(() {
           _syncTask = null;
+          if (_syncQueued) {
+            _syncQueued = false;
+            unawaited(syncRemote());
+          }
         });
   }
 
