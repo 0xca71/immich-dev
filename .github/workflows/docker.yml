@@ -3,7 +3,7 @@ name: Docker
 on:
   workflow_dispatch:
   push:
-    branches: [dev]
+    branches: [dev, main]
   pull_request:
   release:
     types: [published]
