@@ -1,43 +1,46 @@
 <script lang="ts">
   import { MediaType } from '$lib/constants';
-  import RadioButton from '$lib/elements/RadioButton.svelte';
   import { Text } from '@immich/ui';
   import { t } from 'svelte-i18n';
+  import { searchManager } from '$lib/managers/search-manager.svelte';
+  import SearchButton from './SearchButton.svelte';
 
-  interface Props {
-    filteredMedia: MediaType;
-  }
-
-  let { filteredMedia = $bindable() }: Props = $props();
+  let filteredMedia = $derived(searchManager.filter.mediaType);
 </script>
 
 <div id="media-type-selection">
   <fieldset>
-    <Text class="mb-2" fontWeight="medium">{$t('media_type')}</Text>
+    <Text class="pb-5">{$t('media_type_description')}</Text>
 
-    <div class="mt-1 flex flex-wrap gap-x-5 gap-y-2">
-      <RadioButton name="media-type" id="type-all" bind:group={filteredMedia} label={$t('all')} value={MediaType.All} />
-      <RadioButton
-        name="media-type"
-        id="type-image"
-        bind:group={filteredMedia}
-        label={$t('image')}
-        value={MediaType.Image}
-      />
-      <RadioButton
-        name="media-type"
-        id="type-video"
-        bind:group={filteredMedia}
-        label={$t('video')}
-        value={MediaType.Video}
-      />
-      <RadioButton
-        name="media-type"
-        id="type-live-photo"
-        bind:group={filteredMedia}
-        label={$t('search_page_motion_photos')}
-        value={MediaType.LivePhoto}
-      />
+    <div class="flex flex-wrap gap-2">
+      <SearchButton
+        checked
+        active={filteredMedia === MediaType.All}
+        onclick={() => (searchManager.filter.mediaType = MediaType.All)}
+      >
+        {$t('all')}
+      </SearchButton>
+      <SearchButton
+        checked
+        active={filteredMedia === MediaType.Image}
+        onclick={() => (searchManager.filter.mediaType = MediaType.Image)}
+      >
+        {$t('image')}
+      </SearchButton>
+      <SearchButton
+        checked
+        active={filteredMedia === MediaType.Video}
+        onclick={() => (searchManager.filter.mediaType = MediaType.Video)}
+      >
+        {$t('video')}
+      </SearchButton>
+      <SearchButton
+        checked
+        active={filteredMedia === MediaType.LivePhoto}
+        onclick={() => (searchManager.filter.mediaType = MediaType.LivePhoto)}
+      >
+        {$t('search_page_motion_photos')}
+      </SearchButton>
     </div>
   </fieldset>
 </div>
