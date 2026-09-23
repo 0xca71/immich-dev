@@ -100,9 +100,35 @@ jobs:
       build-args: |
         DEVICE=cpu
 
+  timestamp_tag_server:
+    name: Tag Server Build
+    needs: [pre-job, server]
+    if: ${{ needs.pre-job.outputs.server == 'true' && needs.server.result == 'success' && !github.event.pull_request.head.repo.fork }}
+    permissions:
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569ef # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag image with build time
+        env:
+          REGISTRY_NAME: ghcr.io
+          REPOSITORY: ${{ github.repository_owner }}/immich-server
+          TAG_COMMIT: commit-${{ github.event_name != 'pull_request' && github.sha || github.event.pull_request.head.sha }}
+        run: |
+          BUILD_TAG="$(TZ=Asia/Shanghai date '+build-%Y%m%d-%H%M%S-utc8')"
+          docker buildx imagetools create \
+            -t "${REGISTRY_NAME}/${REPOSITORY}:${BUILD_TAG}" \
+            "${REGISTRY_NAME}/${REPOSITORY}:${TAG_COMMIT}"
+
   success-check-server:
     name: Docker Build & Push Server Success
-    needs: [server, retag_server]
+    needs: [server, retag_server, timestamp_tag_server]
     permissions: {}
     runs-on: ubuntu-latest
     if: always()
