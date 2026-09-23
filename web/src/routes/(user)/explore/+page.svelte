@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ExploreAssetRow from '$lib/components/explore/ExploreAssetRow.svelte';
+  import RandomSection from '$lib/components/explore/RandomSection.svelte';
+  import type { AssetResponseDto } from '@immich/sdk';
   import ImageThumbnail from '$lib/components/assets/thumbnail/ImageThumbnail.svelte';
   import UserPageLayout from '$lib/components/layouts/UserPageLayout.svelte';
   import OnEvents from '$lib/components/OnEvents.svelte';
@@ -53,12 +56,23 @@
     }
   };
 
+  let viewerAssets = $state<AssetResponseDto[]>([]);
+
+  const onSelectRandom = (assets: AssetResponseDto[], asset: AssetResponseDto) => {
+    viewerAssets = assets;
+    assetViewerManager.setAsset(asset);
+  };
+
   const onViewAsset = async (id: string) => {
+    viewerAssets = [];
     const asset = await getAssetInfo({ ...authManager.params, id });
     assetViewerManager.setAsset(asset);
   };
 
+  const viewerIndex = $derived(viewerAssets.findIndex((asset) => asset.id === assetViewerManager.asset?.id));
   const assetCursor = $derived({
+    previousAsset: viewerIndex > 0 ? viewerAssets[viewerIndex - 1] : undefined,
+    nextAsset: viewerIndex >= 0 ? viewerAssets[viewerIndex + 1] : undefined,
     current: assetViewerManager.asset!,
   });
 </script>
@@ -147,6 +161,8 @@
     </div>
   {/if}
 
+  <RandomSection onselect={onSelectRandom} />
+
   {#if recents.length > 0}
     <div class="mt-2 mb-6">
       <div class="flex justify-between">
@@ -157,22 +173,7 @@
           draggable="false">{$t('view_all')}</a
         >
       </div>
-      <div class="flex h-24 max-w-fit flex-wrap gap-x-1 overflow-hidden md:h-42">
-        {#each recents as item (item.data.id)}
-          <button
-            type="button"
-            class="relative h-full flex-auto"
-            onclick={() => onViewAsset(item.data.id)}
-            draggable="false"
-          >
-            <img
-              src={getAssetMediaUrl({ id: item.data.id, size: AssetMediaSize.Thumbnail })}
-              alt={$getAltText(toTimelineAsset(item.data))}
-              class="size-full min-w-max rounded-xl object-cover"
-            />
-          </button>
-        {/each}
-      </div>
+      <ExploreAssetRow assets={recents.map((item) => item.data)} onselect={(asset) => onViewAsset(asset.id)} />
     </div>
   {/if}
 
@@ -186,7 +187,7 @@
     <Portal target="body">
       <AssetViewer
         cursor={assetCursor}
-        showNavigation={false}
+        showNavigation={viewerAssets.length > 1}
         onClose={() => assetViewerManager.showAssetViewer(false)}
       />
     </Portal>
