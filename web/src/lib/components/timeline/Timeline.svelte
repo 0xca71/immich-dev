@@ -585,7 +585,7 @@
 {#if timelineManager.months.length > 0}
   {#if !usingMobileDevice}
     <div
-      class="absolute end-0 top-0 z-2"
+      class="absolute inset-e-0 top-0 z-2"
       style:width={scrubberColumnWidth + 'px'}
       bind:clientHeight={scrubberHeaderHeight}
     >
@@ -621,7 +621,7 @@
 <!-- Right margin MUST be equal to the width of scrubber -->
 <section
   id="asset-grid"
-  class={['scrollbar-hidden h-full overflow-y-auto outline-none', { 'm-0': isEmpty }, { 'ms-0': !isEmpty }]}
+  class={['h-full scrollbar-hidden overflow-y-auto outline-none', { 'm-0': isEmpty }, { 'ms-0': !isEmpty }]}
   style:margin-inline-end={(usingMobileDevice ? 0 : scrubberColumnWidth) + 'px'}
   tabindex="-1"
   bind:clientHeight={timelineManager.viewportHeight}

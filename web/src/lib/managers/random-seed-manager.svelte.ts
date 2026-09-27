@@ -9,7 +9,7 @@ class RandomSeedManager {
   #seed = $state<RandomSeed>();
 
   set(assets: AssetResponseDto[], filter: RandomFilterState) {
-    this.#seed = assets.length ? { assets, filter } : undefined;
+    this.#seed = assets.length > 0 ? { assets, filter } : undefined;
   }
 
   take(filter: RandomFilterState): AssetResponseDto[] | undefined {

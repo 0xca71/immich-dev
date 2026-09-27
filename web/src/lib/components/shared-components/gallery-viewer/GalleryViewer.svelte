@@ -335,18 +335,20 @@
     }
   });
 
-  const resolveSlideshowStepAsset: SlideshowStepAssetResolver = async (asset, order) => {
-    return order === 'previous' ? getPreviousAsset(navigationAssets, asset) : getNextAsset(navigationAssets, asset);
+  const resolveSlideshowStepAsset: SlideshowStepAssetResolver = (asset, order) => {
+    return Promise.resolve(
+      order === 'previous' ? getPreviousAsset(navigationAssets, asset) : getNextAsset(navigationAssets, asset),
+    );
   };
 
-  const resolveSlideshowRandomAsset: SlideshowRandomAssetResolver = async (isPlayable) => {
-    const playableAssets = navigationAssets.filter(isPlayable);
+  const resolveSlideshowRandomAsset: SlideshowRandomAssetResolver = (isPlayable) => {
+    const playableAssets = navigationAssets.filter((asset) => isPlayable(asset));
     if (playableAssets.length === 0) {
-      return;
+      return Promise.resolve(undefined);
     }
 
     const randomIndex = Math.floor(Math.random() * playableAssets.length);
-    return playableAssets[randomIndex];
+    return Promise.resolve(playableAssets[randomIndex]);
   };
 
   const assetCursor = $derived<AssetCursor>({

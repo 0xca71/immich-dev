@@ -12,17 +12,25 @@
     assetViewerManager.setAsset(asset);
   };
   const viewerIndex = $derived(viewerAssets.findIndex((asset) => asset.id === assetViewerManager.asset?.id));
-  const cursor = $derived({ current: assetViewerManager.asset!, previousAsset: viewerAssets[viewerIndex - 1], nextAsset: viewerAssets[viewerIndex + 1] });
+  const cursor = $derived({
+    current: assetViewerManager.asset!,
+    previousAsset: viewerAssets[viewerIndex - 1],
+    nextAsset: viewerAssets[viewerIndex + 1],
+  });
 </script>
 
 <UserPageLayout title={$t('explore_random')}>
-  <RandomSection full onselect={onselect} />
+  <RandomSection full {onselect} />
 </UserPageLayout>
 
 {#if assetViewerManager.isViewing}
   {#await import('$lib/components/asset-viewer/AssetViewer.svelte') then { default: AssetViewer }}
     <Portal target="body">
-      <AssetViewer cursor={cursor} showNavigation={viewerAssets.length > 1} onClose={() => assetViewerManager.showAssetViewer(false)} />
+      <AssetViewer
+        {cursor}
+        showNavigation={viewerAssets.length > 1}
+        onClose={() => assetViewerManager.showAssetViewer(false)}
+      />
     </Portal>
   {/await}
 {/if}

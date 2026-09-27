@@ -58,18 +58,18 @@
     await navigate({ targetRoute: 'current', assetId: asset.id });
   };
 
-  const resolveSlideshowStepAsset: SlideshowStepAssetResolver = async (asset, order) => {
-    return order === 'previous' ? getPreviousAsset(assets, asset) : getNextAsset(assets, asset);
+  const resolveSlideshowStepAsset: SlideshowStepAssetResolver = (asset, order) => {
+    return Promise.resolve(order === 'previous' ? getPreviousAsset(assets, asset) : getNextAsset(assets, asset));
   };
 
-  const resolveSlideshowRandomAsset: SlideshowRandomAssetResolver = async (isPlayable) => {
-    const playableAssets = assets.filter(isPlayable);
+  const resolveSlideshowRandomAsset: SlideshowRandomAssetResolver = (isPlayable) => {
+    const playableAssets = assets.filter((asset) => isPlayable(asset));
     if (playableAssets.length === 0) {
-      return;
+      return Promise.resolve(undefined);
     }
 
     const index = Math.floor(Math.random() * playableAssets.length);
-    return playableAssets[index];
+    return Promise.resolve(playableAssets[index]);
   };
 
   const assetCursor = $derived({

@@ -37,7 +37,7 @@
       <label class="text-sm"
         >{$t('media_type')}
         <select
-          class="ms-2 rounded border p-2 dark:bg-immich-dark-gray"
+          class="ms-2 rounded-sm border p-2 dark:bg-immich-dark-gray"
           bind:value={filter.mediaType}
           disabled={loading}
           onchange={(event) => {
@@ -53,7 +53,7 @@
       <label class="text-sm"
         >{$t('date_range')}
         <select
-          class="ms-2 rounded border p-2 dark:bg-immich-dark-gray"
+          class="ms-2 rounded-sm border p-2 dark:bg-immich-dark-gray"
           bind:value={filter.dateRange}
           disabled={loading}
           onchange={(event) => {
@@ -64,7 +64,8 @@
             }
           }}
         >
-          {#each dateRangeOptions as range}<option value={range}>{$t(`explore_random_range_${range}`)}</option>{/each}
+          {#each dateRangeOptions as range (range)}<option value={range}>{$t(`explore_random_range_${range}`)}</option
+            >{/each}
         </select>
       </label>
       {#if filter.dateRange === 'custom'}

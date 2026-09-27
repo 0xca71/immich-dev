@@ -45,7 +45,10 @@ export function buildCustomDateRange(after: string, before: string) {
   return { gte, lt };
 }
 
-export function buildRandomSearchFilter(state: RandomFilterState, now = DateTime.now()): SearchFilter {
+export function buildRandomSearchFilter(
+  state: RandomFilterState,
+  now: DateTime<boolean> = DateTime.now(),
+): SearchFilter {
   const filter: SearchFilter = {};
   if (state.mediaType !== 'all') {
     filter.type = { eq: state.mediaType === 'image' ? AssetTypeEnum.Image : AssetTypeEnum.Video };
@@ -59,21 +62,29 @@ export function buildRandomSearchFilter(state: RandomFilterState, now = DateTime
   }
   const ago = (years: number) => now.minus({ years }).toUTC().toISO()!;
   switch (state.dateRange) {
-    case 'last_year':
+    case 'all': {
+      break;
+    }
+    case 'last_year': {
       filter.takenAt = { gte: ago(1), lt: ago(0) };
       break;
-    case 'years_1_3':
+    }
+    case 'years_1_3': {
       filter.takenAt = { gte: ago(3), lt: ago(1) };
       break;
-    case 'years_3_5':
+    }
+    case 'years_3_5': {
       filter.takenAt = { gte: ago(5), lt: ago(3) };
       break;
-    case 'years_5_10':
+    }
+    case 'years_5_10': {
       filter.takenAt = { gte: ago(10), lt: ago(5) };
       break;
-    case 'older_10':
+    }
+    case 'older_10': {
       filter.takenAt = { lt: ago(10) };
       break;
+    }
   }
   return filter;
 }
@@ -84,7 +95,7 @@ export const RANDOM_BATCH_SIZE = 200;
 export function mergeUniqueAssets(assets: AssetResponseDto[], incoming: AssetResponseDto[]) {
   const seen = new Set(assets.map((asset) => asset.id));
   const added = incoming.filter((asset) => !seen.has(asset.id));
-  return { assets: added.length ? [...assets, ...added] : assets, added: added.length };
+  return { assets: added.length > 0 ? [...assets, ...added] : assets, added: added.length };
 }
 
 export async function loadRandomBatch(filter: SearchFilter, signal: AbortSignal, size = RANDOM_BATCH_SIZE) {
