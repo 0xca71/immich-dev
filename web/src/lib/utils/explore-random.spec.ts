@@ -24,10 +24,11 @@ const filterState = (overrides: Partial<ReturnType<typeof defaultRandomFilter>> 
 describe('explore random helpers', () => {
   it('builds structured type and taken date filters', () => {
     const filter = buildRandomSearchFilter(
-      filterState({ mediaType: 'video', dateRange: 'last_year' }),
+      filterState({ mediaType: 'video', albumId: 'album-1', dateRange: 'last_year' }),
       DateTime.fromISO('2026-09-23T12:00:00Z'),
     );
     expect(filter.type).toEqual({ eq: AssetTypeEnum.Video });
+    expect(filter.albumIds).toEqual({ any: ['album-1'] });
     expect(filter.takenAt?.gte).toBe('2025-09-23T12:00:00.000Z');
     expect(filter.takenAt?.lt).toBe('2026-09-23T12:00:00.000Z');
   });
@@ -76,5 +77,6 @@ describe('explore random helpers', () => {
     expect(
       isSameRandomFilter(filterState({ takenAfter: '2020-01-02' }), filterState({ takenAfter: '2020-01-03' })),
     ).toBe(false);
+    expect(isSameRandomFilter(defaultRandomFilter(), filterState({ albumId: 'album-1' }))).toBe(false);
   });
 });

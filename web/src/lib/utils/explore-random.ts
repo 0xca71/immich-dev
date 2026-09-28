@@ -12,12 +12,14 @@ export type RandomDateRange = (typeof dateRanges)[number] | 'custom';
 export const dateRangeOptions = [...dateRanges, 'custom'] satisfies RandomDateRange[];
 export type RandomFilterState = {
   mediaType: 'all' | 'image' | 'video';
+  albumId: string;
   dateRange: RandomDateRange;
   takenAfter: string;
   takenBefore: string;
 };
 export const defaultRandomFilter = (): RandomFilterState => ({
   mediaType: 'all',
+  albumId: '',
   dateRange: 'all',
   takenAfter: '',
   takenBefore: '',
@@ -25,6 +27,7 @@ export const defaultRandomFilter = (): RandomFilterState => ({
 
 export const isSameRandomFilter = (a: RandomFilterState, b: RandomFilterState) =>
   a.mediaType === b.mediaType &&
+  a.albumId === b.albumId &&
   a.dateRange === b.dateRange &&
   a.takenAfter === b.takenAfter &&
   a.takenBefore === b.takenBefore;
@@ -52,6 +55,9 @@ export function buildRandomSearchFilter(
   const filter: SearchFilter = {};
   if (state.mediaType !== 'all') {
     filter.type = { eq: state.mediaType === 'image' ? AssetTypeEnum.Image : AssetTypeEnum.Video };
+  }
+  if (state.albumId) {
+    filter.albumIds = { any: [state.albumId] };
   }
   if (state.dateRange === 'custom') {
     const custom = buildCustomDateRange(state.takenAfter, state.takenBefore);

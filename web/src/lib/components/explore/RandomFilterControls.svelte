@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { getAllAlbums, type AlbumResponseDto } from '@immich/sdk';
   import { DatePicker, IconButton } from '@immich/ui';
   import { mdiShuffle, mdiTune } from '@mdi/js';
   import { t } from 'svelte-i18n';
   import { DateTime } from 'luxon';
+  import { handleError } from '$lib/utils/handle-error';
   import { dateRangeOptions, type RandomFilterState } from '$lib/utils/explore-random';
   let {
     filter = $bindable(),
@@ -10,7 +12,24 @@
     onrefresh,
   }: { filter: RandomFilterState; loading: boolean; onrefresh: () => void } = $props();
   let expanded = $state(false);
+  let albums = $state<AlbumResponseDto[]>([]);
+  let albumsLoading = $state(false);
   const asDateTime = (value: string) => (value ? DateTime.fromISO(value) : undefined);
+
+  async function loadAlbums() {
+    if (albumsLoading || albums.length > 0) {
+      return;
+    }
+
+    albumsLoading = true;
+    try {
+      albums = (await getAllAlbums({})).toSorted((a, b) => a.albumName.localeCompare(b.albumName));
+    } catch (error) {
+      handleError(error, $t('errors.failed_to_load_assets'));
+    } finally {
+      albumsLoading = false;
+    }
+  }
 </script>
 
 <div class="flex flex-wrap items-center justify-end gap-2">
@@ -21,7 +40,12 @@
     icon={mdiTune}
     aria-label={$t('filters')}
     aria-expanded={expanded}
-    onclick={() => (expanded = !expanded)}
+    onclick={() => {
+      expanded = !expanded;
+      if (expanded) {
+        void loadAlbums();
+      }
+    }}
   />
   <IconButton
     shape="round"
@@ -48,6 +72,20 @@
           <option value="all">{$t('all')}</option><option value="image">{$t('photos')}</option><option value="video"
             >{$t('videos')}</option
           >
+        </select>
+      </label>
+      <label class="text-sm"
+        >{$t('album')}
+        <select
+          class="ms-2 max-w-56 rounded-sm border p-2 dark:bg-immich-dark-gray"
+          bind:value={filter.albumId}
+          disabled={loading || albumsLoading}
+          onchange={onrefresh}
+        >
+          <option value="">{$t('all_albums')}</option>
+          {#each albums as album (album.id)}
+            <option value={album.id}>{album.albumName}</option>
+          {/each}
         </select>
       </label>
       <label class="text-sm"
